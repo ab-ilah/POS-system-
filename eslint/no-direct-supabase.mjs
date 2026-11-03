@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 
 const PACKAGE = '@supabase/supabase-js'
@@ -16,9 +17,45 @@ function resolveLocal(importer, source) {
   return null
 }
 
-function withTypeScriptExtension(filePath) {
-  if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return filePath
-  return `${filePath}.ts`
+// Same mapping the TypeScript bundler resolver uses: a `.js` specifier can
+// point at the `.ts` source, and an extensionless specifier tries `.ts` first.
+function typescriptCandidates(resolvedPath) {
+  const extension = path.extname(resolvedPath)
+  if (extension === '.js' || extension === '.jsx' || extension === '.mjs' || extension === '.cjs') {
+    const base = resolvedPath.slice(0, -extension.length)
+    if (extension === '.jsx') return [`${base}.tsx`, `${base}.ts`, `${base}.d.ts`, resolvedPath]
+    if (extension === '.mjs') return [`${base}.mts`, `${base}.d.mts`, resolvedPath]
+    if (extension === '.cjs') return [`${base}.cts`, `${base}.d.cts`, resolvedPath]
+    return [`${base}.ts`, `${base}.tsx`, `${base}.d.ts`, resolvedPath]
+  }
+  if (extension === '.ts' || extension === '.tsx' || extension === '.mts' || extension === '.cts') {
+    return [resolvedPath]
+  }
+  if (extension === '') {
+    return [
+      `${resolvedPath}.ts`,
+      `${resolvedPath}.tsx`,
+      `${resolvedPath}.d.ts`,
+      `${resolvedPath}.js`,
+      `${resolvedPath}.jsx`,
+      path.join(resolvedPath, 'index.ts'),
+      path.join(resolvedPath, 'index.tsx'),
+      path.join(resolvedPath, 'index.d.ts'),
+      path.join(resolvedPath, 'index.js'),
+    ]
+  }
+  return [resolvedPath]
+}
+
+function resolveTypeScriptFile(resolvedPath) {
+  for (const candidate of typescriptCandidates(resolvedPath)) {
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate
+    } catch {
+      // Try the next TypeScript candidate.
+    }
+  }
+  return null
 }
 
 function isClientModule(filePath) {
@@ -38,7 +75,8 @@ function classify(importer, source) {
   if (source === PACKAGE || source.startsWith(`${PACKAGE}/`)) return 'package'
   const resolved = resolveLocal(importer, source)
   if (!resolved) return null
-  return isClientModule(withTypeScriptExtension(resolved)) ? 'client-module' : null
+  const existing = resolveTypeScriptFile(resolved)
+  return existing && isClientModule(existing) ? 'client-module' : null
 }
 
 function check(context, node, source) {

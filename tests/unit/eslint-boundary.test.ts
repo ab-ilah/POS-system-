@@ -36,13 +36,16 @@ describe('supabase import boundary', () => {
     expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
   })
 
-  it('rejects a resolved client import that does not spell lib/data in the specifier', async () => {
-    const messages = await lint(
-      'src/lib/money.ts',
-      `import { browserSupabase } from './data/supabase.ts'\nexport const load = browserSupabase\n`,
-    )
-    expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
-  })
+  it.each(['./data/supabase.js', './data/supabase.ts', './data/supabase'])(
+    'rejects %s from outside the data layer',
+    async (specifier) => {
+      const messages = await lint(
+        'src/lib/money.ts',
+        `import { browserSupabase } from '${specifier}'\nexport const load = browserSupabase\n`,
+      )
+      expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
+    },
+  )
 
   it('rejects a dynamic import of the client module from outside the data layer', async () => {
     const messages = await lint(
@@ -52,13 +55,16 @@ describe('supabase import boundary', () => {
     expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
   })
 
-  it('allows the data layer to import the client module by its resolved path', async () => {
-    const messages = await lint(
-      'src/lib/data/auth.ts',
-      `import { browserSupabase } from './supabase.ts'\nexport const load = browserSupabase\n`,
-    )
-    expect(messages.some((message) => message.includes('data-access layer'))).toBe(false)
-  })
+  it.each(['./supabase.js', './supabase.ts', './supabase'])(
+    'allows %s from inside the data layer',
+    async (specifier) => {
+      const messages = await lint(
+        'src/lib/data/auth.ts',
+        `import { browserSupabase } from '${specifier}'\nexport const load = browserSupabase\n`,
+      )
+      expect(messages.some((message) => message.includes('data-access layer'))).toBe(false)
+    },
+  )
 
   it('allows the package inside the data client module', async () => {
     const messages = await lint('src/lib/data/supabase.ts', clientImport)
