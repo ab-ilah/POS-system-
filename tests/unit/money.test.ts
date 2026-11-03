@@ -37,21 +37,21 @@ describe('shelf prices', () => {
 
 describe('formatGhs', () => {
   it('formats integer pesewas as Ghana cedis without floating-point residue', () => {
-    expect(formatGhs(pesewas(0))).toBe('GHS 0.00')
-    expect(formatGhs(pesewas(1))).toBe('GHS 0.01')
-    expect(formatGhs(pesewas(10))).toBe('GHS 0.10')
-    expect(formatGhs(pesewas(18900))).toBe('GHS 189.00')
-    expect(formatGhs(pesewas(123456789))).toBe('GHS 1,234,567.89')
-    expect(formatGhs(pesewas(-50))).toBe('-GHS 0.50')
+    expect(formatGhs(pesewas(0))).toBe('GH₵ 0.00')
+    expect(formatGhs(pesewas(1))).toBe('GH₵ 0.01')
+    expect(formatGhs(pesewas(10))).toBe('GH₵ 0.10')
+    expect(formatGhs(pesewas(18900))).toBe('GH₵ 189.00')
+    expect(formatGhs(pesewas(123456789))).toBe('GH₵ 1,234,567.89')
+    expect(formatGhs(pesewas(-50))).toBe('-GH₵ 0.50')
   })
 
-  it('formats and parses 99, 100, and 123456 pesewas as GHS', () => {
-    expect(formatGhs(pesewas(99))).toBe('GHS 0.99')
-    expect(formatGhs(pesewas(100))).toBe('GHS 1.00')
-    expect(formatGhs(pesewas(123456))).toBe('GHS 1,234.56')
-    expect(parseGhs('GHS 0.99')).toBe(99)
-    expect(parseGhs('GHS 1.00')).toBe(100)
-    expect(parseGhs('GHS 1,234.56')).toBe(123456)
+  it('formats and parses 99, 100, and 123456 pesewas as GH₵', () => {
+    expect(formatGhs(pesewas(99))).toBe('GH₵ 0.99')
+    expect(formatGhs(pesewas(100))).toBe('GH₵ 1.00')
+    expect(formatGhs(pesewas(123456))).toBe('GH₵ 1,234.56')
+    expect(parseGhs('GH₵ 0.99')).toBe(99)
+    expect(parseGhs('GH₵ 1.00')).toBe(100)
+    expect(parseGhs('GH₵ 1,234.56')).toBe(123456)
     expect(parseGhs(formatGhs(pesewas(99)))).toBe(99)
     expect(parseGhs(formatGhs(pesewas(100)))).toBe(100)
     expect(parseGhs(formatGhs(pesewas(123456)))).toBe(123456)

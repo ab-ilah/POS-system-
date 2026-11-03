@@ -1,6 +1,6 @@
 # Clothing POS
 
-Frontend for a clothing-store point of sale in Ghana. Money is stored as integer pesewas (tax-inclusive shelf prices) and shown as GHS.
+Frontend for a clothing-store point of sale in Ghana. Money is stored as integer pesewas (tax-inclusive shelf prices) and shown as GH₵.
 
 This repository is the POS-02 frontend scaffold. Schema, RLS, seed data, and the role-matrix source of truth are in [POS-System-backend](https://github.com/ab-ilah/POS-System-backend). That work is out of scope here. Role-gated navigation (Sell, Sales, Products, Stock, Day, Staff, Settings) is POS-04 and is not part of this shell.
 

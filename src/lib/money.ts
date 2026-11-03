@@ -58,16 +58,16 @@ function groupCedis(cedis: number): string {
   return String(cedis).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-const GHS_PATTERN = /^(-)?GHS (\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})$/
+const GH_CEDI_PATTERN = /^(-)?GH₵ (\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})$/
 
 export function parseGhs(formatted: string): Pesewas {
-  const match = GHS_PATTERN.exec(formatted.trim())
-  if (!match) throw new Error('Amount must look like GHS 1.00')
+  const match = GH_CEDI_PATTERN.exec(formatted.trim())
+  if (!match) throw new Error('Amount must look like GH₵ 1.00')
   const [, sign, cedisText, fractionText] = match
   const cedis = Number(cedisText?.replaceAll(',', ''))
   const fraction = Number(fractionText)
   if (!Number.isInteger(cedis) || !Number.isInteger(fraction) || fraction > 99) {
-    throw new Error('Amount must look like GHS 1.00')
+    throw new Error('Amount must look like GH₵ 1.00')
   }
   const amount = cedis * 100 + fraction
   return pesewas(sign === '-' ? -amount : amount)
@@ -79,6 +79,6 @@ export function formatGhs(amount: Pesewas): string {
   const absolute = negative ? -value : value
   const cedis = Math.trunc(absolute / 100)
   const fraction = absolute % 100
-  const formatted = `GHS ${groupCedis(cedis)}.${String(fraction).padStart(2, '0')}`
+  const formatted = `GH₵ ${groupCedis(cedis)}.${String(fraction).padStart(2, '0')}`
   return negative ? `-${formatted}` : formatted
 }
