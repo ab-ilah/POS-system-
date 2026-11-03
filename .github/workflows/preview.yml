@@ -45,4 +45,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy stub
-        run: echo "preview: deploy stub. This step does not check out pull request code and does not receive host tokens. See docs/preview.md."
+        run: |
+          echo "preview: deploy stub. This step does not check out pull request code and does not receive host tokens. See docs/preview.md."
