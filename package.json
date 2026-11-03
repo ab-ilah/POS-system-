@@ -15,7 +15,7 @@
     "test:e2e": "playwright test",
     "preview": "vite preview",
     "scan:bundle": "node scripts/scan-bundle.mjs",
-    "permissions:check": "node scripts/sync-permissions-matrix.mjs --check",
+    "permissions:check": "node scripts/sync-permissions-matrix.mjs --check; code=$?; if [ \"$code\" -eq 2 ]; then exit 0; else exit \"$code\"; fi",
     "ci": "npm run permissions:check && npm run typecheck && npm run lint && npm test && npm run build && npm run scan:bundle && npm run test:e2e"
   },
   "dependencies": {
@@ -42,6 +42,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.14.0",
+    "jsdom": "^30.1.3",
     "tailwindcss": "^4.3.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.1",

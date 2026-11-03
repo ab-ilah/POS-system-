@@ -58,6 +58,21 @@ function groupCedis(cedis: number): string {
   return String(cedis).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
+const GHS_PATTERN = /^(-)?GHS (\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})$/
+
+export function parseGhs(formatted: string): Pesewas {
+  const match = GHS_PATTERN.exec(formatted.trim())
+  if (!match) throw new Error('Amount must look like GHS 1.00')
+  const [, sign, cedisText, fractionText] = match
+  const cedis = Number(cedisText?.replaceAll(',', ''))
+  const fraction = Number(fractionText)
+  if (!Number.isInteger(cedis) || !Number.isInteger(fraction) || fraction > 99) {
+    throw new Error('Amount must look like GHS 1.00')
+  }
+  const amount = cedis * 100 + fraction
+  return pesewas(sign === '-' ? -amount : amount)
+}
+
 export function formatGhs(amount: Pesewas): string {
   const value = pesewas(amount)
   const negative = value < 0

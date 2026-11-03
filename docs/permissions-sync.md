@@ -10,11 +10,11 @@ The header in the vendored file says it is synced from the backend. Do not edit 
 
 The check always hashes the vendored body (the sync header is stripped first) and compares it to `src/shared/permissions.matrix.sha256`. A local edit that does not update the pin fails, including while the backend file is missing.
 
-Upstream states:
+Upstream states are different exit codes, not just different log lines:
 
-- **PENDING** — HTTP 404. The backend file is not published (an empty repo and a private repo both look like this). The command prints `PENDING` and exits 0 only when the vendored hash matches the pin. It does not treat a 200 body that merely contains the text `404: Not Found` as missing.
-- **Match** — HTTP 200, the body parses as a matrix (`PERMISSIONS_MATRIX` and `export const ROLES`), and it equals the vendored body and the pin.
-- **Mismatch or invalid** — any other HTTP status, a 200 that is not a matrix, or a matrix that differs. Exit 1.
+- **Match** — HTTP 200, the body parses as a matrix (`PERMISSIONS_MATRIX` and `export const ROLES`), and it equals the vendored body and the pin. Prints `permissions-sync-state=match` and exits **0**. No GitHub warning.
+- **PENDING** — HTTP 404 and the vendored hash matches the pin. The backend file is not published yet (an empty repo and a private repo both look like this). Prints `permissions-sync-state=pending`, prints a GitHub Actions `::warning::` annotation, and exits **2**. This is not a match. `npm run permissions:check` turns exit 2 into 0 so CI stays green while the warning stays on the job log. It does not treat a 200 body that merely contains the text `404: Not Found` as missing.
+- **Mismatch, invalid, or a pin failure** — any other HTTP status, a 200 that is not a matrix, a matrix that differs, or a 404 whose vendored hash does not match the pin. Exits **1**.
 
 `node scripts/sync-permissions-matrix.mjs --update` rewrites the vendored file and the pin from a real 200 matrix. It does not run when the upstream file is missing.
 

@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../../types/database.ts'
+import { userMessageFromFailure } from '../user-message.ts'
+import { commitSaleWithTimeout } from './commit-sale-call.ts'
 import type { CommitSaleArgs, CommitSaleClient, CommitSaleResult } from './sales.ts'
 
 type SupabaseEnv = {
@@ -43,10 +45,13 @@ function commitSaleResult(data: Database['public']['Functions']['commit_sale']['
   return { saleId: data.sale_id, replayed: data.replayed }
 }
 
-export function createCommitSaleClient(client: TypedSupabaseClient): CommitSaleClient {
+export function createCommitSaleClient(
+  client: TypedSupabaseClient,
+  options?: { timeoutMs?: number },
+): CommitSaleClient {
   return {
     async commitSale(args: CommitSaleArgs) {
-      const { data, error } = await client.rpc('commit_sale', {
+      const payload = {
         p_idempotency_key: args.idempotencyKey,
         p_store_id: args.storeId,
         p_lines: args.lines.map((line) => ({
@@ -55,9 +60,13 @@ export function createCommitSaleClient(client: TypedSupabaseClient): CommitSaleC
           quantity: line.quantity,
           unit_price_pesewas: line.unitPricePesewas,
         })),
-      })
-      if (error) throw new Error(error.message)
-      return commitSaleResult(data)
+      }
+      return commitSaleWithTimeout(async (signal) => {
+        const { data, error } = await client.rpc('commit_sale', payload).abortSignal(signal)
+        if (signal.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+        if (error) throw new Error(userMessageFromFailure({ body: error.message }))
+        return commitSaleResult(data)
+      }, options?.timeoutMs)
     },
   }
 }

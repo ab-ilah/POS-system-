@@ -22,15 +22,24 @@ describe('permissions matrix pin', () => {
     expect(decision.message).toContain('PENDING')
   })
 
-  it('reports a missing upstream file as PENDING when the pin matches', () => {
+  it('reports a missing upstream file as PENDING, not as a match', () => {
     const decision = evaluatePermissionsSync({
       localSource,
       pinnedHash,
       remote: { status: 404 },
     })
-    expect(decision).toMatchObject({ state: 'pending', exitCode: 0 })
+    const matched = evaluatePermissionsSync({
+      localSource,
+      pinnedHash,
+      remote: { status: 200, body: localSource },
+    })
+    expect(decision).toMatchObject({ state: 'pending', exitCode: 2 })
+    expect(decision.annotation).toMatch(/^::warning::/)
     expect(decision.message).toContain('PENDING')
     expect(decision.message).toContain('HTTP 404')
+    expect(matched).toMatchObject({ state: 'match', exitCode: 0 })
+    expect(matched.annotation).toBeUndefined()
+    expect(decision.exitCode).not.toBe(matched.exitCode)
   })
 
   it('fails when a published matrix differs', () => {

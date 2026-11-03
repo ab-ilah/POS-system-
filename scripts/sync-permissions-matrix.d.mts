@@ -8,6 +8,7 @@ export type SyncDecision = {
   state: string
   exitCode: number
   message: string
+  annotation?: string
   localBody?: string
   remoteBody?: string
 }

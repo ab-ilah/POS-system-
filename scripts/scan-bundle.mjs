@@ -13,6 +13,12 @@ export function scanText(text, options = {}, file = '<text>') {
   if (/sb_secret_[A-Za-z0-9_-]+/.test(text)) {
     findings.push({ file, reason: 'found sb_secret_ key material' })
   }
+  if (/\bsk_[A-Za-z0-9_-]{20,}\b/.test(text)) {
+    findings.push({ file, reason: 'found sk_ secret key' })
+  }
+  if (/-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/.test(text)) {
+    findings.push({ file, reason: 'found PEM private key' })
+  }
 
   const jwtPattern = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g
   for (const token of text.match(jwtPattern) ?? []) {
@@ -113,7 +119,7 @@ async function main() {
     }
     return 1
   }
-  console.log(`bundle scan: no service_role, sb_secret_, or non-anon JWT in ${directory}`)
+  console.log(`bundle scan: no service_role, sb_secret_, sk_ key, PEM private key, or non-anon JWT in ${directory}`)
   return 0
 }
 

@@ -26,6 +26,17 @@ describe('scanText', () => {
     expect(scanText('plain app code')).toEqual([])
   })
 
+  it('rejects sk_ secret keys and PEM private keys from fixtures', () => {
+    const skStyle = 'sk_example_notarealscannerfixture'
+    const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'FAKE', '-----END RSA PRIVATE KEY-----'].join('\n')
+    const openssh = '-----BEGIN OPENSSH PRIVATE KEY-----'
+    expect(scanText(`token=${skStyle}`).some((finding) => /sk_/.test(finding.reason))).toBe(true)
+    expect(scanText(pem).some((finding) => /PEM private key/.test(finding.reason))).toBe(true)
+    expect(scanText(openssh).some((finding) => /PEM private key/.test(finding.reason))).toBe(true)
+    expect(scanText('-----BEGIN PUBLIC KEY-----')).toEqual([])
+    expect(scanText('sk_short')).toEqual([])
+  })
+
   it('matches an exact forbidden secret only when one is provided, and does not echo it', () => {
     const secret = 'super-secret-value-not-a-real-key'
     const findings = scanText(`bundle contains ${secret}`, { forbiddenSecret: secret })

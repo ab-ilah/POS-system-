@@ -53,10 +53,12 @@ export function evaluatePermissionsSync({ localSource, pinnedHash, remote }) {
         message: `permissions sync: PENDING — backend matrix is not published (HTTP 404), but the vendored hash ${localHash} does not match the pin ${pinnedHash.trim()}.`,
       }
     }
+    const message = `permissions sync: PENDING — backend shared/permissions.matrix.ts is not published (HTTP 404). Vendored hash matches the pin ${localHash}.`
     return {
       state: 'pending',
-      exitCode: 0,
-      message: `permissions sync: PENDING — backend shared/permissions.matrix.ts is not published (HTTP 404). Vendored hash matches the pin ${localHash}.`,
+      exitCode: 2,
+      message,
+      annotation: `::warning::${message}`,
     }
   }
 
@@ -146,7 +148,14 @@ async function main() {
   }
 
   const decision = evaluatePermissionsSync({ localSource, pinnedHash, remote })
+  if (decision.exitCode === 2) {
+    console.log(decision.annotation)
+    console.log('permissions-sync-state=pending')
+    console.log(decision.message)
+    return 2
+  }
   if (decision.exitCode === 0) {
+    console.log('permissions-sync-state=match')
     console.log(decision.message)
     return 0
   }

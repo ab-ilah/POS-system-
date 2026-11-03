@@ -31,8 +31,8 @@ The app opens on the Vite dev URL. `/` is the register placeholder. `/login` is 
 | `npm run lint` | ESLint, including the Supabase import boundary |
 | `npm test` | Vitest unit tests |
 | `npm run build` | Typecheck and production build |
-| `npm run scan:bundle` | Fail if `dist/` contains `service_role`, an `sb_secret_…` key, or a JWT whose role is not `anon` |
-| `npm run permissions:check` | Pin-check the vendored role matrix and compare it when the backend file exists |
+| `npm run scan:bundle` | Fail if `dist/` contains `service_role`, an `sb_secret_…` key, an `sk_` secret key, a PEM private key, or a JWT whose role is not `anon` |
+| `npm run permissions:check` | Pin-check the vendored role matrix. A missing backend file is `PENDING` (exit 2, GitHub `::warning::`), not a match. See `docs/permissions-sync.md`. |
 | `npm run test:e2e` | Playwright smoke test. Requires `npm run build` and `npx playwright install chromium` |
 | `npm run ci` | Permissions check, typecheck, lint, unit tests, build, and bundle scan. Install Playwright before `test:e2e`; Actions does that in the workflow |
 

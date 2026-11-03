@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { signIn, visibleSignInMessage } from '../../src/lib/data/auth.ts'
+import { EMPTY_ERROR_FALLBACK, UNAVAILABLE_ERROR_FALLBACK } from '../../src/lib/user-message.ts'
 
 describe('signIn', () => {
   it('does not call Supabase when the gateway is missing', async () => {
@@ -31,6 +32,19 @@ describe('signIn', () => {
         },
       ),
     ).rejects.toThrow('Failed to fetch')
+  })
+
+  it('uses a fallback when a 503 or any other error has an empty body', async () => {
+    const unavailable = await signIn(
+      { email: 'cashier@example.com', password: 'secret' },
+      { signInWithPassword: async () => ({ error: { message: '', status: 503 } }) },
+    )
+    const empty = await signIn(
+      { email: 'cashier@example.com', password: 'secret' },
+      { signInWithPassword: async () => ({ error: { message: '   ', status: 500 } }) },
+    )
+    expect(unavailable).toEqual({ ok: false, message: UNAVAILABLE_ERROR_FALLBACK })
+    expect(empty).toEqual({ ok: false, message: EMPTY_ERROR_FALLBACK })
   })
 
   it('returns ok when the gateway accepts the password', async () => {

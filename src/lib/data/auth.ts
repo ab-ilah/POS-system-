@@ -1,3 +1,4 @@
+import { userMessageFromFailure } from '../user-message.ts'
 import { browserSupabase } from './supabase.ts'
 import type { AuthGateway } from './types.ts'
 
@@ -9,9 +10,9 @@ export function visibleSignInMessage(input: {
   thrown: unknown
 }): string | null {
   if (input.formError) return input.formError
-  if (input.result && !input.result.ok) return input.result.message
-  if (input.thrown instanceof Error && input.thrown.message) return input.thrown.message
-  if (input.thrown) return 'Sign-in failed.'
+  if (input.result && !input.result.ok) return userMessageFromFailure({ body: input.result.message })
+  if (input.thrown instanceof Error) return userMessageFromFailure({ body: input.thrown.message })
+  if (input.thrown) return userMessageFromFailure({})
   return null
 }
 
@@ -23,7 +24,7 @@ export async function signIn(
 ): Promise<SignInResult> {
   if (!auth) return { ok: false, message: NOT_CONFIGURED }
   const { error } = await auth.signInWithPassword(credentials)
-  if (error) return { ok: false, message: error.message }
+  if (error) return { ok: false, message: userMessageFromFailure({ status: error.status, body: error.message }) }
   return { ok: true }
 }
 

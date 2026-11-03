@@ -11,7 +11,7 @@ export interface AuthGateway {
   signInWithPassword(credentials: {
     email: string
     password: string
-  }): Promise<{ error: { message: string } | null }>
+  }): Promise<{ error: { message: string; status?: number } | null }>
 }
 
 export type QueryClientLike = {

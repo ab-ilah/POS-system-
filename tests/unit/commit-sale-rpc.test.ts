@@ -9,10 +9,14 @@ describe('createCommitSaleClient', () => {
     const supabase = {
       rpc(fn: 'commit_sale', args: Database['public']['Functions']['commit_sale']['Args']) {
         calls.push({ fn, args })
-        return Promise.resolve({
-          data: { sale_id: args.p_idempotency_key, replayed: false },
-          error: null,
-        })
+        return {
+          abortSignal() {
+            return Promise.resolve({
+              data: { sale_id: args.p_idempotency_key, replayed: false },
+              error: null,
+            })
+          },
+        }
       },
     }
 
