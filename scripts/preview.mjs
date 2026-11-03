@@ -2,41 +2,42 @@ import { spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export const STAGING_REF = 'hnbvmxebzaocdttlteib'
-export const PROD_REF = 'vasbjwzykqoebbtvqnjx'
+export const STAGING_HOST = 'hnbvmxebzaocdttlteib.supabase.co'
+export const PROD_HOST = 'vasbjwzykqoebbtvqnjx.supabase.co'
 
-const HOSTS = new Set(['vercel', 'cloudflare'])
+export function supabaseProjectHost(value) {
+  let parsed
+  try {
+    parsed = new URL(value)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'https:') return null
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) return null
+  if (parsed.pathname !== '/' && parsed.pathname !== '') return null
+  return parsed.hostname
+}
 
 export function planPreview(env) {
-  const host = (env.PREVIEW_HOST ?? '').trim().toLowerCase()
   const url = (env.VITE_SUPABASE_URL ?? '').trim()
   const anonKey = (env.VITE_SUPABASE_ANON_KEY ?? '').trim()
 
-  if (url.includes(PROD_REF)) {
+  if (!url && !anonKey) {
+    return { action: 'skip', reason: 'Staging URL and anon key are not in the preview environment yet.' }
+  }
+
+  const host = url ? supabaseProjectHost(url) : null
+  if (host === PROD_HOST) {
     return { action: 'fail', reason: 'Preview must not target the production Supabase project.' }
   }
-  if (url && !url.includes(STAGING_REF)) {
-    return { action: 'fail', reason: 'Preview URL must be the staging Supabase project.' }
+  if (host !== STAGING_HOST) {
+    return { action: 'fail', reason: 'Preview URL must be exactly the staging project origin.' }
   }
-  if (host && !HOSTS.has(host)) {
-    return { action: 'fail', reason: `Unknown PREVIEW_HOST "${host}". Use vercel or cloudflare.` }
+  if (!anonKey) {
+    return { action: 'skip', reason: 'Staging anon key is not in the preview environment yet.' }
   }
-  if (!host) {
-    return {
-      action: 'skip',
-      reason: 'PREVIEW_HOST is unset. Choose Vercel or Cloudflare Pages before previews deploy.',
-    }
-  }
-  if (!url || !anonKey) {
-    return { action: 'skip', reason: 'Staging anon URL and key are not in the preview environment yet.' }
-  }
-  if (host === 'vercel' && !env.VERCEL_TOKEN?.trim()) {
-    return { action: 'skip', reason: 'VERCEL_TOKEN is not configured yet.' }
-  }
-  if (host === 'cloudflare' && !(env.CLOUDFLARE_API_TOKEN?.trim() && env.CLOUDFLARE_ACCOUNT_ID?.trim())) {
-    return { action: 'skip', reason: 'Cloudflare token or account id is not configured yet.' }
-  }
-  return { action: 'deploy', host }
+
+  return { action: 'build' }
 }
 
 function isDirectRun() {
@@ -46,6 +47,17 @@ function isDirectRun() {
     return realpathSync(entry) === fileURLToPath(import.meta.url)
   } catch {
     return false
+  }
+}
+
+function buildEnv() {
+  return {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    CI: process.env.CI,
+    NODE_ENV: 'production',
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY,
   }
 }
 
@@ -60,15 +72,15 @@ function main() {
     return 0
   }
 
-  console.log(`preview: building against staging for ${plan.host}. Deploy adapter is a stub and will not upload.`)
+  console.log('preview: building against the staging origin. This step does not deploy and does not read host tokens.')
   const build = spawnSync('npm', ['run', 'build'], {
     stdio: 'inherit',
-    env: process.env,
+    env: buildEnv(),
   })
   if (build.status !== 0) return build.status ?? 1
-  const scan = spawnSync('node', ['scripts/scan-bundle.mjs'], { stdio: 'inherit' })
+  const scan = spawnSync('node', ['scripts/scan-bundle.mjs'], { stdio: 'inherit', env: buildEnv() })
   if (scan.status !== 0) return scan.status ?? 1
-  console.log(`preview: stub — ${plan.host} adapter is not executed. See docs/preview.md.`)
+  console.log('preview: build finished. Deploy is a separate trusted step. See docs/preview.md.')
   return 0
 }
 

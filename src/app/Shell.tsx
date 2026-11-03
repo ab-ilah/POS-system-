@@ -2,6 +2,7 @@ import { Store } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+// Role-gated navigation is POS-04 and is intentionally not in this shell.
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-svh bg-background text-foreground">

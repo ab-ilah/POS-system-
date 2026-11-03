@@ -1,26 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { commitSale, prepareSale } from '../../src/lib/data/sales.ts'
-import type { RowStore, UpsertRow } from '../../src/lib/data/types.ts'
+import { commitSale, prepareSale, type CommitSaleArgs, type CommitSaleClient } from '../../src/lib/data/sales.ts'
 import { shelfPriceFromCedis } from '../../src/lib/money.ts'
 
-function memoryStore() {
-  const tables = new Map<string, Map<string, UpsertRow>>()
-  const store: RowStore = {
-    async upsert(table, rows, onConflict) {
-      if (onConflict !== 'id') throw new Error(`expected onConflict id, got ${onConflict}`)
-      const bucket = tables.get(table) ?? new Map<string, UpsertRow>()
-      tables.set(table, bucket)
-      for (const row of rows) bucket.set(row.id, { ...row })
+function rpcClient() {
+  const calls: CommitSaleArgs[] = []
+  const client: CommitSaleClient = {
+    async commitSale(args) {
+      calls.push(args)
+      const replayed = calls.filter((call) => call.idempotencyKey === args.idempotencyKey).length > 1
+      return { saleId: args.idempotencyKey, replayed }
     },
   }
-  return { store, tables }
+  return { client, calls }
 }
 
 const shirt = shelfPriceFromCedis(189, 0)
 const thread = shelfPriceFromCedis(1, 5)
 
 describe('prepareSale', () => {
-  it('keeps client-generated ids so a retry targets the same rows', () => {
+  it('keeps client-generated ids so a retry targets the same command', () => {
     const command = prepareSale({
       id: 'sale-1',
       storeId: 'store-1',
@@ -45,14 +43,23 @@ describe('prepareSale', () => {
     expect(command.totalPesewas).toBe(105)
   })
 
-  it('rejects an empty sale', () => {
+  it('rejects an empty sale and duplicate line ids', () => {
     expect(() => prepareSale({ storeId: 'store-1', lines: [] })).toThrow(/at least one line/)
+    expect(() =>
+      prepareSale({
+        storeId: 'store-1',
+        lines: [
+          { id: 'line-1', variantId: 'var-1', quantity: 1, unitPricePesewas: thread },
+          { id: 'line-1', variantId: 'var-2', quantity: 1, unitPricePesewas: shirt },
+        ],
+      }),
+    ).toThrow(/Duplicate sale line id line-1/)
   })
 })
 
 describe('commitSale', () => {
-  it('upserts on id so a second commit does not create another row', async () => {
-    const { store, tables } = memoryStore()
+  it('sends the header and lines in one RPC and replays the same idempotency key', async () => {
+    const { client, calls } = rpcClient()
     const command = prepareSale({
       id: 'sale-1',
       storeId: 'store-1',
@@ -62,27 +69,26 @@ describe('commitSale', () => {
       ],
     })
 
-    await commitSale(store, command, 'cashier')
-    await commitSale(store, command, 'cashier')
+    const first = await commitSale(client, command, 'cashier')
+    const second = await commitSale(client, command, 'cashier')
 
-    expect(tables.get('sales')?.size).toBe(1)
-    expect(tables.get('sale_lines')?.size).toBe(2)
-    expect(tables.get('sales')?.get('sale-1')).toMatchObject({
-      id: 'sale-1',
-      store_id: 'store-1',
-      total_pesewas: 37905,
-    })
-    expect(tables.get('sale_lines')?.get('line-1')).toMatchObject({
-      sale_id: 'sale-1',
-      variant_id: 'var-1',
-      quantity: 2,
-      unit_price_pesewas: 18900,
+    expect(first).toEqual({ saleId: 'sale-1', replayed: false })
+    expect(second).toEqual({ saleId: 'sale-1', replayed: true })
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toEqual(calls[1])
+    expect(calls[0]).toMatchObject({
+      idempotencyKey: 'sale-1',
+      storeId: 'store-1',
+      lines: [
+        { id: 'line-1', variantId: 'var-1', quantity: 2, unitPricePesewas: 18900 },
+        { id: 'line-2', variantId: 'var-2', quantity: 1, unitPricePesewas: 105 },
+      ],
     })
   })
 
-  it('asks the permission gate before writing and does not write when denied', async () => {
-    const { store, tables } = memoryStore()
-    const calls: string[] = []
+  it('asks the permission gate before the RPC and does not call it when denied', async () => {
+    const { client, calls } = rpcClient()
+    const seen: string[] = []
     const command = prepareSale({
       id: 'sale-1',
       storeId: 'store-1',
@@ -90,13 +96,13 @@ describe('commitSale', () => {
     })
 
     await expect(
-      commitSale(store, command, 'cashier', () => {
-        calls.push('denied')
+      commitSale(client, command, 'cashier', () => {
+        seen.push('denied')
         throw new Error('denied')
       }),
     ).rejects.toThrow('denied')
 
-    expect(calls).toEqual(['denied'])
-    expect(tables.size).toBe(0)
+    expect(seen).toEqual(['denied'])
+    expect(calls).toHaveLength(0)
   })
 })

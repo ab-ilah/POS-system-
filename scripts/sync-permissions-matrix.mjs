@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 const REMOTE_URL = 'https://raw.githubusercontent.com/ab-ilah/POS-System-backend/main/shared/permissions.matrix.ts'
 const LOCAL_PATH = 'src/shared/permissions.matrix.ts'
+const PIN_PATH = 'src/shared/permissions.matrix.sha256'
 
 const VENDOR_HEADER = `/**
  * SYNCED FROM THE BACKEND.
@@ -16,8 +18,9 @@ const VENDOR_HEADER = `/**
  * https://github.com/ab-ilah/POS-System-backend
  *
  * Do not change policy in this copy. \`scripts/sync-permissions-matrix.mjs\`
- * diffs it against the backend file once that file exists. Replace this
- * vendored module with a shared package when the backend publishes one.
+ * diffs it against the backend file once that file exists. The pinned hash in
+ * \`permissions.matrix.sha256\` must match this body. Replace this vendored
+ * module with a shared package when the backend publishes one.
  * See docs/permissions-sync.md.
  */
 `
@@ -28,6 +31,76 @@ export function stripVendorHeader(source) {
 
 export function normalizeMatrix(source) {
   return `${stripVendorHeader(source).replace(/\r\n/g, '\n').trim()}\n`
+}
+
+export function matrixBodyHash(source) {
+  return createHash('sha256').update(normalizeMatrix(source), 'utf8').digest('hex')
+}
+
+function looksLikeMatrix(body) {
+  return body.includes('PERMISSIONS_MATRIX') && body.includes('export const ROLES')
+}
+
+export function evaluatePermissionsSync({ localSource, pinnedHash, remote }) {
+  const localHash = matrixBodyHash(localSource)
+  const hashMatches = localHash === pinnedHash.trim()
+
+  if (remote.status === 404) {
+    if (!hashMatches) {
+      return {
+        state: 'pending',
+        exitCode: 1,
+        message: `permissions sync: PENDING — backend matrix is not published (HTTP 404), but the vendored hash ${localHash} does not match the pin ${pinnedHash.trim()}.`,
+      }
+    }
+    return {
+      state: 'pending',
+      exitCode: 0,
+      message: `permissions sync: PENDING — backend shared/permissions.matrix.ts is not published (HTTP 404). Vendored hash matches the pin ${localHash}.`,
+    }
+  }
+
+  if (remote.status !== 200) {
+    return {
+      state: 'error',
+      exitCode: 1,
+      message: `permissions sync: failed to fetch backend matrix (HTTP ${remote.status}).`,
+    }
+  }
+
+  const remoteBody = normalizeMatrix(remote.body ?? '')
+  if (!looksLikeMatrix(remoteBody)) {
+    return {
+      state: 'invalid',
+      exitCode: 1,
+      message: 'permissions sync: backend response is not a permissions matrix.',
+    }
+  }
+
+  const localBody = normalizeMatrix(localSource)
+  if (localBody !== remoteBody) {
+    return {
+      state: 'mismatch',
+      exitCode: 1,
+      message: 'permissions sync: vendored matrix differs from the backend source of truth.',
+      localBody,
+      remoteBody,
+    }
+  }
+
+  if (!hashMatches) {
+    return {
+      state: 'pin-mismatch',
+      exitCode: 1,
+      message: `permissions sync: vendored file matches the backend but not the pinned hash ${pinnedHash.trim()}.`,
+    }
+  }
+
+  return {
+    state: 'match',
+    exitCode: 0,
+    message: 'permissions sync: vendored matrix matches the backend and the pinned hash.',
+  }
 }
 
 function isDirectRun() {
@@ -42,17 +115,15 @@ function isDirectRun() {
 
 async function fetchRemote() {
   const response = await fetch(REMOTE_URL, { signal: AbortSignal.timeout(20_000) })
-  if (response.status === 404) return null
-  if (!response.ok) {
-    throw new Error(`permissions sync: failed to fetch backend matrix (${response.status})`)
-  }
-  const text = await response.text()
-  if (text.includes('404: Not Found')) return null
-  return text
+  if (response.status === 404) return { status: 404 }
+  const body = await response.text()
+  return { status: response.status, body }
 }
 
 async function main() {
   const update = process.argv.includes('--update')
+  const localSource = await readFile(LOCAL_PATH, 'utf8')
+  const pinnedHash = await readFile(PIN_PATH, 'utf8')
   let remote
   try {
     remote = await fetchRemote()
@@ -61,34 +132,34 @@ async function main() {
     return 1
   }
 
-  if (remote === null) {
-    console.log(
-      'permissions sync stub: backend file is not published yet. Vendored copy remains. See docs/permissions-sync.md',
-    )
+  if (update && remote.status === 200) {
+    const remoteBody = normalizeMatrix(remote.body ?? '')
+    if (!looksLikeMatrix(remoteBody)) {
+      console.error('permissions sync: backend response is not a permissions matrix.')
+      return 1
+    }
+    const next = `${VENDOR_HEADER}\n${remoteBody}`
+    await writeFile(LOCAL_PATH, next, 'utf8')
+    await writeFile(PIN_PATH, `${matrixBodyHash(next)}\n`, 'utf8')
+    console.log(`permissions sync: wrote ${LOCAL_PATH} and updated the pinned hash`)
     return 0
   }
 
-  const remoteBody = normalizeMatrix(remote)
-  if (update) {
-    await writeFile(LOCAL_PATH, `${VENDOR_HEADER}\n${remoteBody}`, 'utf8')
-    console.log(`permissions sync: wrote ${LOCAL_PATH} from the backend`)
+  const decision = evaluatePermissionsSync({ localSource, pinnedHash, remote })
+  if (decision.exitCode === 0) {
+    console.log(decision.message)
     return 0
   }
-
-  const localBody = normalizeMatrix(await readFile(LOCAL_PATH, 'utf8'))
-  if (localBody === remoteBody) {
-    console.log('permissions sync: vendored matrix matches the backend')
-    return 0
+  console.error(decision.message)
+  if (decision.localBody && decision.remoteBody) {
+    const directory = await mkdtemp(join(tmpdir(), 'pos-matrix-'))
+    const localFile = join(directory, 'local.ts')
+    const remoteFile = join(directory, 'remote.ts')
+    await writeFile(localFile, decision.localBody)
+    await writeFile(remoteFile, decision.remoteBody)
+    spawnSync('diff', ['-u', localFile, remoteFile], { stdio: 'inherit' })
   }
-
-  console.error('permissions sync: vendored matrix differs from the backend source of truth')
-  const directory = await mkdtemp(join(tmpdir(), 'pos-matrix-'))
-  const localFile = join(directory, 'local.ts')
-  const remoteFile = join(directory, 'remote.ts')
-  await writeFile(localFile, localBody)
-  await writeFile(remoteFile, remoteBody)
-  spawnSync('diff', ['-u', localFile, remoteFile], { stdio: 'inherit' })
-  return 1
+  return decision.exitCode
 }
 
 if (isDirectRun()) {

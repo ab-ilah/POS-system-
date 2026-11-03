@@ -1,59 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { planPreview, PROD_REF, STAGING_REF } from '../../scripts/preview.mjs'
+import { planPreview, PROD_HOST, STAGING_HOST } from '../../scripts/preview.mjs'
 
-const stagingUrl = `https://${STAGING_REF}.supabase.co`
-const prodUrl = `https://${PROD_REF}.supabase.co`
+const stagingUrl = `https://${STAGING_HOST}`
+const prodUrl = `https://${PROD_HOST}`
 
 describe('planPreview', () => {
-  it('skips when the host has not been chosen and no URL is configured', () => {
+  it('skips when no URL is configured', () => {
     expect(planPreview({})).toMatchObject({ action: 'skip' })
   })
 
-  it('refuses the production project even when the host is unset', () => {
-    const plan = planPreview({ VITE_SUPABASE_URL: prodUrl })
-    expect(plan.action).toBe('fail')
-    if (plan.action === 'fail') expect(plan.reason).not.toContain(prodUrl)
-  })
-
-  it('refuses a URL that is not the staging project', () => {
-    expect(planPreview({ VITE_SUPABASE_URL: 'https://example.supabase.co' }).action).toBe('fail')
-  })
-
-  it('stays a stub until Gabriel picks a host and supplies the staging anon key', () => {
-    expect(planPreview({ VITE_SUPABASE_URL: stagingUrl, VITE_SUPABASE_ANON_KEY: 'anon-placeholder' })).toMatchObject({
-      action: 'skip',
+  it('accepts only the exact staging origin', () => {
+    expect(planPreview({ VITE_SUPABASE_URL: stagingUrl, VITE_SUPABASE_ANON_KEY: 'anon-placeholder' })).toEqual({
+      action: 'build',
     })
-    expect(
-      planPreview({
-        PREVIEW_HOST: 'vercel',
-        VITE_SUPABASE_URL: stagingUrl,
-        VITE_SUPABASE_ANON_KEY: '',
-      }),
-    ).toMatchObject({ action: 'skip' })
+    expect(planPreview({ VITE_SUPABASE_URL: `${stagingUrl}/`, VITE_SUPABASE_ANON_KEY: 'anon-placeholder' })).toEqual({
+      action: 'build',
+    })
   })
 
-  it('plans a deploy only for staging with a known host and that host token', () => {
-    expect(
-      planPreview({
-        PREVIEW_HOST: 'cloudflare',
-        VITE_SUPABASE_URL: stagingUrl,
-        VITE_SUPABASE_ANON_KEY: 'anon-placeholder',
-        CLOUDFLARE_API_TOKEN: 'token',
-        CLOUDFLARE_ACCOUNT_ID: 'account',
-      }),
-    ).toEqual({ action: 'deploy', host: 'cloudflare' })
+  it('refuses the production origin and lookalike URLs', () => {
+    const prod = planPreview({ VITE_SUPABASE_URL: prodUrl, VITE_SUPABASE_ANON_KEY: 'anon-placeholder' })
+    expect(prod.action).toBe('fail')
+    if (prod.action === 'fail') expect(prod.reason).not.toContain(prodUrl)
 
+    expect(planPreview({ VITE_SUPABASE_URL: `https://example.com/?q=${STAGING_HOST}` }).action).toBe('fail')
+    expect(planPreview({ VITE_SUPABASE_URL: `https://${STAGING_HOST}.evil.example` }).action).toBe('fail')
+    expect(planPreview({ VITE_SUPABASE_URL: `https://evil.example/${STAGING_HOST}` }).action).toBe('fail')
+    expect(planPreview({ VITE_SUPABASE_URL: `http://${STAGING_HOST}` }).action).toBe('fail')
+    expect(planPreview({ VITE_SUPABASE_URL: `${stagingUrl}/rest/v1` }).action).toBe('fail')
+  })
+
+  it('does not treat host tokens as a reason to deploy', () => {
     expect(
       planPreview({
-        PREVIEW_HOST: 'vercel',
         VITE_SUPABASE_URL: stagingUrl,
         VITE_SUPABASE_ANON_KEY: 'anon-placeholder',
         VERCEL_TOKEN: 'token',
+        CLOUDFLARE_API_TOKEN: 'token',
       }),
-    ).toEqual({ action: 'deploy', host: 'vercel' })
+    ).toEqual({ action: 'build' })
   })
 
-  it('rejects an unknown host', () => {
-    expect(planPreview({ PREVIEW_HOST: 'netlify', VITE_SUPABASE_URL: stagingUrl }).action).toBe('fail')
+  it('skips the build when the staging origin is set and the anon key is missing', () => {
+    expect(planPreview({ VITE_SUPABASE_URL: stagingUrl })).toMatchObject({ action: 'skip' })
   })
 })

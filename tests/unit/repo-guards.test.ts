@@ -51,6 +51,9 @@ describe('repository guards', () => {
     expect(preview).toContain('github.event.pull_request.head.repo.full_name == github.repository')
     expect(preview).toContain('environment: preview')
     expect(preview).toContain('hnbvmxebzaocdttlteib')
+    expect(preview).not.toContain('VERCEL_TOKEN')
+    expect(preview).not.toContain('CLOUDFLARE_API_TOKEN')
+    expect(preview).toContain('deploy')
   })
 
   it('installs vite-plugin-pwa and leaves it disabled', async () => {

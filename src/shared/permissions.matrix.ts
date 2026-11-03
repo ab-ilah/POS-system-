@@ -7,8 +7,9 @@
  * (that file is not published yet).
  *
  * Do not change policy in this copy. `scripts/sync-permissions-matrix.mjs`
- * diffs it against the backend file once that file exists. Replace this
- * vendored module with a shared package when the backend publishes one.
+ * diffs it against the backend file once that file exists, and
+ * `permissions.matrix.sha256` must match this body. Replace this vendored
+ * module with a shared package when the backend publishes one.
  * See docs/permissions-sync.md.
  *
  * Rows are role x table x operation, each marked allow or deny. This gates

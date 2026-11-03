@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { Label } from '@/components/ui/label.tsx'
-import { browserAuthGateway, signIn } from '@/lib/data/index.ts'
+import { browserAuthGateway, signIn, visibleSignInMessage } from '@/lib/data/index.ts'
 
 export function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -30,8 +30,11 @@ export function LoginScreen() {
     mutation.mutate({ email: email.trim(), password })
   }
 
-  const gatewayMessage = mutation.data && !mutation.data.ok ? mutation.data.message : null
-  const message = formError ?? gatewayMessage
+  const message = visibleSignInMessage({
+    formError,
+    result: mutation.data,
+    thrown: mutation.error,
+  })
 
   return (
     <Shell>

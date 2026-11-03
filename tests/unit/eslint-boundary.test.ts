@@ -36,6 +36,30 @@ describe('supabase import boundary', () => {
     expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
   })
 
+  it('rejects a resolved client import that does not spell lib/data in the specifier', async () => {
+    const messages = await lint(
+      'src/lib/money.ts',
+      `import { browserSupabase } from './data/supabase.ts'\nexport const load = browserSupabase\n`,
+    )
+    expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
+  })
+
+  it('rejects a dynamic import of the client module from outside the data layer', async () => {
+    const messages = await lint(
+      'src/lib/money.ts',
+      `export async function load() {\n  return import('./data/supabase.ts')\n}\n`,
+    )
+    expect(messages.some((message) => message.includes('data-access layer'))).toBe(true)
+  })
+
+  it('allows the data layer to import the client module by its resolved path', async () => {
+    const messages = await lint(
+      'src/lib/data/auth.ts',
+      `import { browserSupabase } from './supabase.ts'\nexport const load = browserSupabase\n`,
+    )
+    expect(messages.some((message) => message.includes('data-access layer'))).toBe(false)
+  })
+
   it('allows the package inside the data client module', async () => {
     const messages = await lint('src/lib/data/supabase.ts', clientImport)
     expect(messages.some((message) => message.includes('data-access layer'))).toBe(false)

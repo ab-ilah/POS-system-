@@ -1,4 +1,7 @@
-export type UpsertRow = { id: string } & Record<string, string | number | boolean | null>
+import type { DbInteger } from '../money.ts'
+
+export type UpsertValue = string | boolean | null | DbInteger
+export type UpsertRow = { id: string } & Record<string, UpsertValue>
 
 export interface RowStore {
   upsert(table: string, rows: readonly UpsertRow[], onConflict: 'id'): Promise<void>

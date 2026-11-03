@@ -1,12 +1,21 @@
+const dbIntegerBrand = Symbol('DbInteger')
 const pesewasBrand = Symbol('Pesewas')
 
-export type Pesewas = number & { readonly [pesewasBrand]: true }
+export type DbInteger = number & { readonly [dbIntegerBrand]: true }
+export type Pesewas = DbInteger & { readonly [pesewasBrand]: true }
+
+export function dbInteger(amount: number): DbInteger {
+  if (!Number.isSafeInteger(amount)) {
+    throw new Error('Value must be a safe integer')
+  }
+  return amount as DbInteger
+}
 
 export function pesewas(amount: number): Pesewas {
   if (!Number.isSafeInteger(amount)) {
     throw new Error('Money must be an integer number of pesewas')
   }
-  return amount as Pesewas
+  return dbInteger(amount) as Pesewas
 }
 
 export function shelfPriceFromCedis(cedis: number, extraPesewas = 0): Pesewas {

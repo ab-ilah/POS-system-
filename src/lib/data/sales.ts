@@ -1,8 +1,7 @@
-import { lineTotal, sumPesewas, type Pesewas } from '../money.ts'
+import { dbInteger, lineTotal, sumPesewas, type Pesewas } from '../money.ts'
 import { assertAllowed } from '../permissions.ts'
-import type { Role, TableName, Operation } from '../../types/index.ts'
+import type { Operation, Role, TableName } from '../../types/index.ts'
 import type { SaleId, SaleLineId, StoreId, VariantId } from '../../types/index.ts'
-import type { RowStore } from './types.ts'
 
 export type PermissionGate = (role: Role, table: TableName, operation: Operation) => void
 
@@ -28,11 +27,39 @@ export type PreparedSaleLine = {
 }
 
 export type SaleCommand = {
-  /** Client-generated primary key. Pass the same id again to retry the write. */
+  /** Client-generated idempotency key. Send the same command again to replay it. */
   id: SaleId
   storeId: StoreId
   lines: readonly PreparedSaleLine[]
   totalPesewas: Pesewas
+}
+
+export type CommitSaleArgs = {
+  idempotencyKey: string
+  storeId: string
+  lines: readonly {
+    id: string
+    variantId: string
+    quantity: ReturnType<typeof dbInteger>
+    unitPricePesewas: Pesewas
+  }[]
+}
+
+export type CommitSaleResult = {
+  saleId: string
+  replayed: boolean
+}
+
+export type CommitSaleClient = {
+  commitSale(args: CommitSaleArgs): Promise<CommitSaleResult>
+}
+
+function assertUniqueLineIds(lines: readonly { id: string }[]): void {
+  const seen = new Set<string>()
+  for (const line of lines) {
+    if (seen.has(line.id)) throw new Error(`Duplicate sale line id ${line.id}`)
+    seen.add(line.id)
+  }
 }
 
 export function prepareSale(input: SaleInput, newId: () => string = () => crypto.randomUUID()): SaleCommand {
@@ -50,6 +77,7 @@ export function prepareSale(input: SaleInput, newId: () => string = () => crypto
       lineTotalPesewas,
     }
   })
+  assertUniqueLineIds(lines)
   return {
     id,
     storeId: input.storeId,
@@ -59,33 +87,22 @@ export function prepareSale(input: SaleInput, newId: () => string = () => crypto
 }
 
 export async function commitSale(
-  store: RowStore,
+  client: CommitSaleClient,
   command: SaleCommand,
   role: Role,
   gate: PermissionGate = assertAllowed,
-): Promise<void> {
+): Promise<CommitSaleResult> {
   gate(role, 'sales', 'insert')
   gate(role, 'sale_lines', 'insert')
-  await store.upsert(
-    'sales',
-    [
-      {
-        id: command.id,
-        store_id: command.storeId,
-        total_pesewas: command.totalPesewas,
-      },
-    ],
-    'id',
-  )
-  await store.upsert(
-    'sale_lines',
-    command.lines.map((line) => ({
+  assertUniqueLineIds(command.lines)
+  return client.commitSale({
+    idempotencyKey: command.id,
+    storeId: command.storeId,
+    lines: command.lines.map((line) => ({
       id: line.id,
-      sale_id: command.id,
-      variant_id: line.variantId,
-      quantity: line.quantity,
-      unit_price_pesewas: line.unitPricePesewas,
+      variantId: line.variantId,
+      quantity: dbInteger(line.quantity),
+      unitPricePesewas: line.unitPricePesewas,
     })),
-    'id',
-  )
+  })
 }

@@ -2,7 +2,7 @@
 
 Frontend for a clothing-store point of sale in Ghana. Money is stored as integer pesewas (tax-inclusive shelf prices) and shown as GHS.
 
-This repository is the POS-02 frontend scaffold. Schema, RLS, seed data, and the role-matrix source of truth are in [POS-System-backend](https://github.com/ab-ilah/POS-System-backend). That work is out of scope here.
+This repository is the POS-02 frontend scaffold. Schema, RLS, seed data, and the role-matrix source of truth are in [POS-System-backend](https://github.com/ab-ilah/POS-System-backend). That work is out of scope here. Role-gated navigation (Sell, Sales, Products, Stock, Day, Staff, Settings) is POS-04 and is not part of this shell.
 
 The repo is public. Do not commit keys. The service-role key must never appear in this repo or in the client bundle.
 
@@ -32,9 +32,9 @@ The app opens on the Vite dev URL. `/` is the register placeholder. `/login` is 
 | `npm test` | Vitest unit tests |
 | `npm run build` | Typecheck and production build |
 | `npm run scan:bundle` | Fail if `dist/` contains `service_role`, an `sb_secret_…` key, or a JWT whose role is not `anon` |
-| `npm run permissions:check` | Diff the vendored role matrix against the backend copy |
-| `npm run test:e2e` | Playwright smoke test (requires `npm run build` first) |
-| `npm run ci` | The same sequence as GitHub Actions, including the e2e build |
+| `npm run permissions:check` | Pin-check the vendored role matrix and compare it when the backend file exists |
+| `npm run test:e2e` | Playwright smoke test. Requires `npm run build` and `npx playwright install chromium` |
+| `npm run ci` | Permissions check, typecheck, lint, unit tests, build, and bundle scan. Install Playwright before `test:e2e`; Actions does that in the workflow |
 
 ## Environment variables
 
@@ -70,9 +70,9 @@ tests/unit         Vitest
 tests/e2e          Playwright
 ```
 
-UI code cannot import `@supabase/supabase-js` or `src/lib/data/supabase.ts`. ESLint enforces that. Screens call `src/lib/data`.
+UI code cannot import `@supabase/supabase-js` or the resolved `src/lib/data/supabase.ts` module. ESLint resolves the import path, so a relative import that does not contain the words `lib/data` is still blocked. Screens call `src/lib/data`.
 
-Writes are upserts on a client-generated UUID (`prepareSale` / `commitSale`), so retrying the same command does not insert a second row. Prices are integer pesewas. `formatGhs` renders them as Ghana cedis. There is no float conversion.
+`commitSale` does not upsert. It sends the header and lines through one `commit_sale` RPC, keyed by a client-generated idempotency id. The function is a backend follow-up; the contract is in [docs/commit-sale.md](docs/commit-sale.md). Prices are integer pesewas. `formatGhs` renders them as Ghana cedis. There is no float conversion.
 
 `isAllowed` / `assertAllowed` read `src/shared/permissions.matrix.ts` (one row per role, table, and operation). The staff role is taken from `app_metadata.role` only. See [docs/permissions-sync.md](docs/permissions-sync.md) for the sync script and the plan to replace the vendored file with a package.
 
@@ -88,15 +88,8 @@ Used by `.github/workflows/preview.yml` for same-repo pull requests only. Values
 | --- | --- | --- |
 | Secret | `VITE_SUPABASE_URL` | `https://hnbvmxebzaocdttlteib.supabase.co` |
 | Secret | `VITE_SUPABASE_ANON_KEY` | Staging anon key for `hnbvmxebzaocdttlteib` |
-| Variable | `PREVIEW_HOST` | Leave unset until the host is chosen. Then `vercel` or `cloudflare`. |
-| Secret | `VERCEL_TOKEN` | Only if `PREVIEW_HOST=vercel` |
-| Secret | `VERCEL_ORG_ID` | Only if `PREVIEW_HOST=vercel` |
-| Secret | `VERCEL_PROJECT_ID` | Only if `PREVIEW_HOST=vercel` |
-| Secret | `CLOUDFLARE_API_TOKEN` | Only if `PREVIEW_HOST=cloudflare` |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | Only if `PREVIEW_HOST=cloudflare` |
-| Variable | `CLOUDFLARE_PROJECT_NAME` | Only if `PREVIEW_HOST=cloudflare` |
 
-The preview host adapter is a stub. Setting these values builds against staging and does not upload yet.
+The build job is the only preview step that runs pull-request code, and it receives only those two values. Do not put `VERCEL_TOKEN` or `CLOUDFLARE_API_TOKEN` on a step that runs `scripts/preview.mjs`. Host tokens belong on a later trusted deploy step that does not execute pull-request code. Enable required reviewers on the `preview` environment before that step exists. See [docs/preview.md](docs/preview.md).
 
 ### Repository secret, post-merge bundle scan only
 
@@ -121,6 +114,6 @@ There is still no frontend environment that should ever hold the service-role ke
 
 `.github/workflows/ci.yml` job `verify`: install, permissions sync check, typecheck, lint, unit tests, build, bundle scan, Playwright smoke test.
 
-`.github/workflows/preview.yml`: same-repo pull requests, `preview` environment, staging anon key only.
+`.github/workflows/preview.yml`: same-repo pull requests. The build job uses the `preview` environment and the staging anon key. The deploy job is a stub with no secrets and no pull-request checkout.
 
 Branch protection, secret scanning, push protection, and Dependabot are documented in [docs/branch-protection.md](docs/branch-protection.md).
