@@ -18,6 +18,10 @@ describe('permissions matrix', () => {
     expect(isAllowed('cashier', 'sales', 'delete')).toBe(false)
     expect(isAllowed('cashier', 'sales', 'update')).toBe(false)
     expect(isAllowed('cashier', 'profiles', 'insert')).toBe(false)
+    expect(isAllowed('cashier', 'stores', 'select')).toBe(true)
+    expect(isAllowed('cashier', 'stores', 'insert')).toBe(false)
+    expect(isAllowed('cashier', 'stock_movements', 'insert')).toBe(true)
+    expect(isAllowed('cashier', 'stock_movements', 'update')).toBe(false)
   })
 
   it('lets a manager complete or void a sale and blocks hard-deleting sales', () => {
