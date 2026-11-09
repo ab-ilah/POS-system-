@@ -4,147 +4,124 @@
  * Vendored copy of the role matrix. The source of truth is
  * `shared/permissions.matrix.ts` in
  * https://github.com/ab-ilah/POS-System-backend
- * (that file is not published yet).
  *
  * Do not change policy in this copy. `scripts/sync-permissions-matrix.mjs`
- * diffs it against the backend file once that file exists, and
+ * diffs it against the backend file once that file exists. The pinned hash in
  * `permissions.matrix.sha256` must match this body. Replace this vendored
  * module with a shared package when the backend publishes one.
  * See docs/permissions-sync.md.
- *
- * Rows are role x table x operation, each marked allow or deny. This gates
- * the UI only. Postgres RLS in the backend repo is the security boundary.
- * Staff role comes from app_metadata, never user_metadata.
  */
 
-export const ROLES = ['owner', 'manager', 'cashier'] as const
+/**
+ * Staff permission matrix for the clothing-store POS.
+ *
+ * The React app imports this file directly (`shared/permissions.matrix.ts`).
+ * Keep it self-contained: no imports. The names it relies on are
+ * `PERMISSIONS_MATRIX` (rows with `decision`), `ROLES`, and the types
+ * `Role`, `TableName`, `Operation`, `Decision`, and `PermissionRow`.
+ *
+ * Adding a role: extend `ROLES`, add a block in `ACCESS`, add a seed user, and
+ * add matching policies. The booleans are table-level. Row scope that a boolean
+ * cannot express is in `PERMISSION_SCOPE_NOTES` and enforced in the SQL policies.
+ */
+
+export const ROLES = ["owner", "manager", "cashier"] as const;
+export type Role = (typeof ROLES)[number];
+
 export const TABLES = [
-  'stores',
-  'staff',
-  'categories',
-  'products',
-  'product_variants',
-  'inventory',
-  'customers',
-  'sales',
-  'sale_lines',
-  'payments',
-  'cash_shifts',
-  'returns',
-] as const
-export const OPERATIONS = ['select', 'insert', 'update', 'delete'] as const
-export const DECISIONS = ['allow', 'deny'] as const
+  "profiles",
+  "products",
+  "product_variants",
+  "customers",
+  "sales",
+  "sale_items",
+] as const;
+export type TableName = (typeof TABLES)[number];
 
-export type Role = (typeof ROLES)[number]
-export type TableName = (typeof TABLES)[number]
-export type Operation = (typeof OPERATIONS)[number]
-export type Decision = (typeof DECISIONS)[number]
+export const OPERATIONS = ["select", "insert", "update", "delete"] as const;
+export type Operation = (typeof OPERATIONS)[number];
 
-export type PermissionRow = {
-  role: Role
-  table: TableName
-  operation: Operation
-  decision: Decision
+export type Decision = "allow" | "deny";
+
+export interface PermissionRow {
+  role: Role;
+  table: TableName;
+  operation: Operation;
+  decision: Decision;
 }
 
-type OperationGrants = { readonly [Op in Operation]: Decision }
-type TableGrants = { readonly [Table in TableName]: OperationGrants }
-type RoleGrants = { readonly [R in Role]: TableGrants }
-
-const allowAll = {
-  select: 'allow',
-  insert: 'allow',
-  update: 'allow',
-  delete: 'allow',
-} as const satisfies OperationGrants
-
-const readOnly = {
-  select: 'allow',
-  insert: 'deny',
-  update: 'deny',
-  delete: 'deny',
-} as const satisfies OperationGrants
-
-const denyAll = {
-  select: 'deny',
-  insert: 'deny',
-  update: 'deny',
-  delete: 'deny',
-} as const satisfies OperationGrants
-
-const appendOnly = {
-  select: 'allow',
-  insert: 'allow',
-  update: 'deny',
-  delete: 'deny',
-} as const satisfies OperationGrants
-
-const noDelete = {
-  select: 'allow',
-  insert: 'allow',
-  update: 'allow',
-  delete: 'deny',
-} as const satisfies OperationGrants
-
-const updateOnly = {
-  select: 'allow',
-  insert: 'deny',
-  update: 'allow',
-  delete: 'deny',
-} as const satisfies OperationGrants
-
-const POLICY = {
+const ACCESS: {
+  readonly [R in Role]: {
+    readonly [T in TableName]: {
+      readonly [O in Operation]: Decision;
+    };
+  };
+} = {
   owner: {
-    stores: allowAll,
-    staff: allowAll,
-    categories: allowAll,
-    products: allowAll,
-    product_variants: allowAll,
-    inventory: allowAll,
-    customers: allowAll,
-    sales: allowAll,
-    sale_lines: allowAll,
-    payments: allowAll,
-    cash_shifts: allowAll,
-    returns: allowAll,
+    profiles: { select: "allow", insert: "deny", update: "allow", delete: "allow" },
+    products: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    product_variants: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    customers: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    sales: { select: "allow", insert: "allow", update: "allow", delete: "deny" },
+    sale_items: { select: "allow", insert: "allow", update: "deny", delete: "deny" },
   },
   manager: {
-    stores: updateOnly,
-    staff: noDelete,
-    categories: allowAll,
-    products: allowAll,
-    product_variants: allowAll,
-    inventory: allowAll,
-    customers: allowAll,
-    sales: appendOnly,
-    sale_lines: appendOnly,
-    payments: appendOnly,
-    cash_shifts: noDelete,
-    returns: appendOnly,
+    profiles: { select: "allow", insert: "deny", update: "allow", delete: "deny" },
+    products: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    product_variants: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    customers: { select: "allow", insert: "allow", update: "allow", delete: "allow" },
+    sales: { select: "allow", insert: "allow", update: "allow", delete: "deny" },
+    sale_items: { select: "allow", insert: "allow", update: "deny", delete: "deny" },
   },
   cashier: {
-    stores: readOnly,
-    staff: denyAll,
-    categories: readOnly,
-    products: readOnly,
-    product_variants: readOnly,
-    inventory: readOnly,
-    customers: noDelete,
-    sales: appendOnly,
-    sale_lines: appendOnly,
-    payments: appendOnly,
-    cash_shifts: noDelete,
-    returns: appendOnly,
+    profiles: { select: "allow", insert: "deny", update: "allow", delete: "deny" },
+    products: { select: "allow", insert: "deny", update: "deny", delete: "deny" },
+    product_variants: { select: "allow", insert: "deny", update: "deny", delete: "deny" },
+    customers: { select: "allow", insert: "allow", update: "allow", delete: "deny" },
+    sales: { select: "allow", insert: "allow", update: "deny", delete: "deny" },
+    sale_items: { select: "allow", insert: "allow", update: "deny", delete: "deny" },
   },
-} as const satisfies RoleGrants
+};
 
-export const PERMISSIONS_MATRIX: readonly PermissionRow[] = ROLES.flatMap((role) =>
-  TABLES.flatMap((table) =>
-    OPERATIONS.map((operation) => ({
-      role,
-      table,
-      operation,
-      decision: POLICY[role][table][operation],
-    })),
-  ),
-)
+export const PERMISSION_SCOPE_NOTES: Readonly<Record<TableName, string>> = {
+  profiles:
+    "A new auth user has a profile and no role, so RLS allows nothing until an owner or manager assigns one. Cashier select and update apply only to that cashier's own row. A manager cannot edit an owner. Nobody inserts profiles through the API.",
+  products: "Owner and manager maintain the catalogue. Cashiers can read it at the till.",
+  product_variants:
+    "Same catalogue rules as products. Shelf prices are integers in pesewas and already include tax.",
+  customers:
+    "Cashiers can register a customer at a zero credit balance and update name and phone. Only an authenticated owner can set or change credit_balance_pesewas. A service-role JWT is denied even when its subject is the owner. Cashiers cannot delete a customer.",
+  sales:
+    "Any staff member can record a sale attributed to themselves. An authenticated owner or manager can complete an open sale or void a sale. Amounts stay immutable. Once a sale is voided, every update is rejected. Nobody deletes a sale.",
+  sale_items:
+    "A line can be inserted only on an open sale whose cashier is the signed-in staff member. Completed and voided sales reject new lines, line edits, line deletes, and moving a line to another sale. Corrections are a void plus a new sale.",
+};
+
+function flatten(): readonly PermissionRow[] {
+  const rows: PermissionRow[] = [];
+  for (const role of ROLES) {
+    for (const table of TABLES) {
+      for (const operation of OPERATIONS) {
+        rows.push({
+          role,
+          table,
+          operation,
+          decision: ACCESS[role][table][operation],
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+export const PERMISSIONS_MATRIX: readonly PermissionRow[] = flatten();
+
+export function decisionFor(role: Role, table: TableName, operation: Operation): Decision {
+  const row = PERMISSIONS_MATRIX.find(
+    (candidate) => candidate.role === role && candidate.table === table && candidate.operation === operation,
+  );
+  if (!row) {
+    throw new Error(`missing permission row ${role} ${table} ${operation}`);
+  }
+  return row.decision;
+}

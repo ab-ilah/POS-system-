@@ -93,7 +93,7 @@ export async function commitSale(
   gate: PermissionGate = assertAllowed,
 ): Promise<CommitSaleResult> {
   gate(role, 'sales', 'insert')
-  gate(role, 'sale_lines', 'insert')
+  gate(role, 'sale_items', 'insert')
   assertUniqueLineIds(command.lines)
   return client.commitSale({
     idempotencyKey: command.id,
