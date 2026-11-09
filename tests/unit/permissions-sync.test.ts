@@ -1,9 +1,26 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { evaluatePermissionsSync, matrixBodyHash } from '../../scripts/sync-permissions-matrix.mjs'
+import {
+  ALLOWED_BACKEND_REFS,
+  backendMatrixUrl,
+  evaluatePermissionsSync,
+  matrixBodyHash,
+  resolveBackendRef,
+} from '../../scripts/sync-permissions-matrix.mjs'
 
 const localSource = await readFile('src/shared/permissions.matrix.ts', 'utf8')
 const pinnedHash = (await readFile('src/shared/permissions.matrix.sha256', 'utf8')).trim()
+
+describe('backend ref', () => {
+  it('defaults to staging and only allows main or staging', () => {
+    expect(resolveBackendRef({})).toBe('staging')
+    expect(resolveBackendRef({ BACKEND_REF: 'main' })).toBe('main')
+    expect(resolveBackendRef({ BACKEND_REF: ' staging ' })).toBe('staging')
+    expect(ALLOWED_BACKEND_REFS).toEqual(['main', 'staging'])
+    expect(backendMatrixUrl('staging')).toContain('/staging/shared/permissions.matrix.ts')
+    expect(() => resolveBackendRef({ BACKEND_REF: 'develop' })).toThrow(/BACKEND_REF/)
+  })
+})
 
 describe('permissions matrix pin', () => {
   it('matches the vendored file', () => {

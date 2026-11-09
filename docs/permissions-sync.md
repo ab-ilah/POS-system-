@@ -8,6 +8,8 @@ The header in the vendored file says it is synced from the backend. Do not edit 
 
 `npm run permissions:check` runs `scripts/sync-permissions-matrix.mjs --check`.
 
+The script fetches `shared/permissions.matrix.ts` from [POS-System-backend](https://github.com/ab-ilah/POS-System-backend) at the branch named by **`BACKEND_REF`** (`main` or `staging` only; default **`staging`** when unset). CI sets `BACKEND_REF` to the pull request base branch or the pushed branch so staging tracks backend `staging` and `main` tracks backend `main`.
+
 The check always hashes the vendored body (the sync header is stripped first) and compares it to `src/shared/permissions.matrix.sha256`. A local edit that does not update the pin fails, including while the backend file is missing.
 
 Upstream states are different exit codes, not just different log lines:
@@ -18,7 +20,7 @@ Upstream states are different exit codes, not just different log lines:
 
 `node scripts/sync-permissions-matrix.mjs --update` rewrites the vendored file and the pin from a real 200 matrix. It does not run when the upstream file is missing.
 
-CI runs the check on every pull request and on pushes to `main`. It does not need secrets.
+CI runs the check on pull requests and pushes to `main` and `staging`. It does not need secrets.
 
 ## Package plan
 

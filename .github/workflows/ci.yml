@@ -31,6 +31,9 @@ jobs:
         run: npm ci
 
       - name: Check permissions matrix sync
+        env:
+          # Staging PRs/pushes diff against backend staging; main against backend main.
+          BACKEND_REF: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
         run: npm run permissions:check
 
       - name: Typecheck
