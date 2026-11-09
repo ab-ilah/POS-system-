@@ -8,7 +8,7 @@ The header in the vendored file says it is synced from the backend. Do not edit 
 
 `npm run permissions:check` runs `scripts/sync-permissions-matrix.mjs --check`.
 
-The script fetches `shared/permissions.matrix.ts` from [POS-System-backend](https://github.com/ab-ilah/POS-System-backend) at the branch named by **`BACKEND_REF`** (`main` or `staging` only; default **`staging`** when unset). CI sets `BACKEND_REF` to the pull request base branch or the pushed branch so staging tracks backend `staging` and `main` tracks backend `main`.
+The script fetches `shared/permissions.matrix.ts` from [POS-System-backend](https://github.com/ab-ilah/POS-System-backend) at the branch named by **`BACKEND_REF`** (`main` or `staging` only; default **`staging`** when unset; empty or whitespace-only values exit **1**). CI sets `BACKEND_REF` to the pull request base branch or the pushed branch so staging tracks backend `staging` and `main` tracks backend `main`.
 
 The check always hashes the vendored body (the sync header is stripped first) and compares it to `src/shared/permissions.matrix.sha256`. A local edit that does not update the pin fails, including while the backend file is missing.
 

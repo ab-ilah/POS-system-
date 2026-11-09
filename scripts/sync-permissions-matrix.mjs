@@ -13,19 +13,26 @@ const PIN_PATH = 'src/shared/permissions.matrix.sha256'
 
 /** @param {NodeJS.ProcessEnv} [env] */
 export function resolveBackendRef(env = process.env) {
-  const raw = env.BACKEND_REF?.trim() || 'staging'
-  if (!ALLOWED_BACKEND_REFS.includes(raw)) {
+  const configured = env.BACKEND_REF
+  if (configured === undefined) {
+    return 'staging'
+  }
+  const trimmed = configured.trim()
+  if (trimmed === '') {
+    throw new Error('permissions sync: BACKEND_REF is empty (must be main or staging)')
+  }
+  if (!ALLOWED_BACKEND_REFS.includes(trimmed)) {
     throw new Error(
-      `permissions sync: BACKEND_REF must be one of ${ALLOWED_BACKEND_REFS.join(', ')}, got ${JSON.stringify(raw)}`,
+      `permissions sync: BACKEND_REF must be one of ${ALLOWED_BACKEND_REFS.join(', ')}, got ${JSON.stringify(configured)}`,
     )
   }
-  return raw
+  return trimmed
 }
 
 /** @param {string} ref */
 export function backendMatrixUrl(ref) {
-  resolveBackendRef({ BACKEND_REF: ref })
-  return `${BACKEND_REPO}/${ref}/shared/permissions.matrix.ts`
+  const backendRef = resolveBackendRef({ BACKEND_REF: ref })
+  return `${BACKEND_REPO}/${backendRef}/shared/permissions.matrix.ts`
 }
 
 const VENDOR_HEADER = `/**
