@@ -6,9 +6,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const REMOTE_URL = 'https://raw.githubusercontent.com/ab-ilah/POS-System-backend/main/shared/permissions.matrix.ts'
+const BACKEND_REPO = 'https://raw.githubusercontent.com/ab-ilah/POS-System-backend'
+export const ALLOWED_BACKEND_REFS = ['main', 'staging']
 const LOCAL_PATH = 'src/shared/permissions.matrix.ts'
 const PIN_PATH = 'src/shared/permissions.matrix.sha256'
+
+/** @param {NodeJS.ProcessEnv} [env] */
+export function resolveBackendRef(env = process.env) {
+  const configured = env.BACKEND_REF
+  if (configured === undefined) {
+    return 'staging'
+  }
+  const trimmed = configured.trim()
+  if (trimmed === '') {
+    throw new Error('permissions sync: BACKEND_REF is empty (must be main or staging)')
+  }
+  if (!ALLOWED_BACKEND_REFS.includes(trimmed)) {
+    throw new Error(
+      `permissions sync: BACKEND_REF must be one of ${ALLOWED_BACKEND_REFS.join(', ')}, got ${JSON.stringify(configured)}`,
+    )
+  }
+  return trimmed
+}
+
+/** @param {string} ref */
+export function backendMatrixUrl(ref) {
+  const backendRef = resolveBackendRef({ BACKEND_REF: ref })
+  return `${BACKEND_REPO}/${backendRef}/shared/permissions.matrix.ts`
+}
 
 const VENDOR_HEADER = `/**
  * SYNCED FROM THE BACKEND.
@@ -115,8 +140,9 @@ function isDirectRun() {
   }
 }
 
-async function fetchRemote() {
-  const response = await fetch(REMOTE_URL, { signal: AbortSignal.timeout(20_000) })
+/** @param {string} backendRef */
+async function fetchRemote(backendRef) {
+  const response = await fetch(backendMatrixUrl(backendRef), { signal: AbortSignal.timeout(20_000) })
   if (response.status === 404) return { status: 404 }
   const body = await response.text()
   return { status: response.status, body }
@@ -124,11 +150,18 @@ async function fetchRemote() {
 
 async function main() {
   const update = process.argv.includes('--update')
+  let backendRef
+  try {
+    backendRef = resolveBackendRef()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'permissions sync: invalid BACKEND_REF')
+    return 1
+  }
   const localSource = await readFile(LOCAL_PATH, 'utf8')
   const pinnedHash = await readFile(PIN_PATH, 'utf8')
   let remote
   try {
-    remote = await fetchRemote()
+    remote = await fetchRemote(backendRef)
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'permissions sync: fetch failed')
     return 1
@@ -143,7 +176,7 @@ async function main() {
     const next = `${VENDOR_HEADER}\n${remoteBody}`
     await writeFile(LOCAL_PATH, next, 'utf8')
     await writeFile(PIN_PATH, `${matrixBodyHash(next)}\n`, 'utf8')
-    console.log(`permissions sync: wrote ${LOCAL_PATH} and updated the pinned hash`)
+    console.log(`permissions sync: wrote ${LOCAL_PATH} from backend ${backendRef} and updated the pinned hash`)
     return 0
   }
 
@@ -151,15 +184,15 @@ async function main() {
   if (decision.exitCode === 2) {
     console.log(decision.annotation)
     console.log('permissions-sync-state=pending')
-    console.log(decision.message)
+    console.log(`${decision.message} (backend ref: ${backendRef})`)
     return 2
   }
   if (decision.exitCode === 0) {
     console.log('permissions-sync-state=match')
-    console.log(decision.message)
+    console.log(`${decision.message} (backend ref: ${backendRef})`)
     return 0
   }
-  console.error(decision.message)
+  console.error(`${decision.message} (backend ref: ${backendRef})`)
   if (decision.localBody && decision.remoteBody) {
     const directory = await mkdtemp(join(tmpdir(), 'pos-matrix-'))
     const localFile = join(directory, 'local.ts')

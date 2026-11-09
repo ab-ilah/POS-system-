@@ -2,8 +2,9 @@ name: ci
 
 on:
   pull_request:
+    branches: [main, staging]
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
@@ -30,7 +31,22 @@ jobs:
         run: npm ci
 
       - name: Check permissions matrix sync
-        run: npm run permissions:check
+        env:
+          # Staging PRs/pushes diff against backend staging; main against backend main.
+          BACKEND_REF: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          if [ -z "${BACKEND_REF}" ]; then
+            echo 'permissions sync: BACKEND_REF is empty in CI (expected main or staging)'
+            exit 1
+          fi
+          case "${BACKEND_REF}" in
+            main|staging) ;;
+            *)
+              echo "permissions sync: BACKEND_REF must be main or staging, got ${BACKEND_REF}"
+              exit 1
+              ;;
+          esac
+          npm run permissions:check
 
       - name: Typecheck
         run: npm run typecheck
