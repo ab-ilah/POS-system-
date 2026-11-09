@@ -37,4 +37,4 @@ Until that package exists, the vendored file, the hash pin, and the diff script 
 
 One row per role (`owner`, `manager`, `cashier`), table, and operation (`select`, `insert`, `update`, `delete`), with decision `allow` or `deny`. The helper reads a staff role only from `app_metadata.role`. `user_metadata` is user-editable and is ignored.
 
-The table list in the vendored file is the frontend assumption while the backend file is absent: `stores`, `staff`, `categories`, `products`, `product_variants`, `inventory`, `customers`, `sales`, `sale_lines`, `payments`, `cash_shifts`, `returns`. When the backend publishes its matrix, `--check` will fail until this copy and the pin are updated to match.
+The vendored `TABLES` list (for example `profiles`, `products`, `product_variants`, `customers`, `stores`, `sales`, `sale_items`, `stock_movements`) must match the backend branch selected by `BACKEND_REF`. When the upstream matrix changes, `--check` fails until this copy and the pin are updated to match.
