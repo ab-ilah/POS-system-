@@ -11,7 +11,10 @@ describe('permissions matrix pin', () => {
   })
 
   it('fails a local edit while the upstream file is still missing', () => {
-    const edited = localSource.replace('staff: denyAll', 'staff: allowAll')
+    const edited = localSource.replace(
+      'Any staff member can record a sale',
+      'Any staff member can record a sale (edited)',
+    )
     const decision = evaluatePermissionsSync({
       localSource: edited,
       pinnedHash,

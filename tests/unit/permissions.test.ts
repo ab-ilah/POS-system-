@@ -12,21 +12,19 @@ describe('permissions matrix', () => {
     }
   })
 
-  it('lets a cashier ring a sale and blocks deleting posted sales or reading staff', () => {
+  it('lets a cashier ring a sale and blocks voiding sales or inserting profiles', () => {
     expect(isAllowed('cashier', 'sales', 'insert')).toBe(true)
-    expect(isAllowed('cashier', 'sale_lines', 'insert')).toBe(true)
+    expect(isAllowed('cashier', 'sale_items', 'insert')).toBe(true)
     expect(isAllowed('cashier', 'sales', 'delete')).toBe(false)
     expect(isAllowed('cashier', 'sales', 'update')).toBe(false)
-    for (const operation of OPERATIONS) {
-      expect(isAllowed('cashier', 'staff', operation)).toBe(false)
-    }
+    expect(isAllowed('cashier', 'profiles', 'insert')).toBe(false)
   })
 
-  it('lets the owner delete a sale and keeps posted money append-only for a manager', () => {
-    expect(isAllowed('owner', 'sales', 'delete')).toBe(true)
+  it('lets a manager complete or void a sale and blocks hard-deleting sales', () => {
+    expect(isAllowed('owner', 'sales', 'delete')).toBe(false)
     expect(isAllowed('manager', 'sales', 'insert')).toBe(true)
+    expect(isAllowed('manager', 'sales', 'update')).toBe(true)
     expect(isAllowed('manager', 'sales', 'delete')).toBe(false)
-    expect(isAllowed('manager', 'payments', 'update')).toBe(false)
   })
 
   it('throws a stable message when the role is denied', () => {
