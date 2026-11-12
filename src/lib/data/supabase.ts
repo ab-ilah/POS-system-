@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../../types/database.ts'
-import { userMessageFromFailure } from '../user-message.ts'
+import { CommitSaleRpcError } from './commit-sale-rpc-error.ts'
 import { commitSaleWithTimeout } from './commit-sale-call.ts'
 import type { CommitSaleArgs, CommitSaleClient, CommitSaleResult } from './sales.ts'
 
@@ -64,7 +64,14 @@ export function createCommitSaleClient(
       return commitSaleWithTimeout(async (signal) => {
         const { data, error } = await client.rpc('commit_sale', payload).abortSignal(signal)
         if (signal.aborted) throw new DOMException('The operation was aborted', 'AbortError')
-        if (error) throw new Error(userMessageFromFailure({ body: error.message }))
+        if (error) {
+          throw new CommitSaleRpcError({
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          })
+        }
         return commitSaleResult(data)
       }, options?.timeoutMs)
     },

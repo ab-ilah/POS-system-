@@ -46,4 +46,44 @@ describe('createCommitSaleClient', () => {
       },
     ])
   })
+
+  it('throws CommitSaleRpcError with PostgREST fields when the RPC fails', async () => {
+    const supabase = {
+      rpc(_fn: 'commit_sale', _args: Database['public']['Functions']['commit_sale']['Args']) {
+        return {
+          abortSignal() {
+            return Promise.resolve({
+              data: null,
+              error: {
+                code: 'PSTCK',
+                message: 'insufficient stock',
+                details: 'variant_id=var-1',
+                hint: 'Oxford shirt',
+              },
+            })
+          },
+        }
+      },
+    }
+
+    const client = createCommitSaleClient(supabase as unknown as TypedSupabaseClient)
+    await expect(
+      client.commitSale({
+        idempotencyKey: 'sale-1',
+        storeId: 'store-1',
+        lines: [
+          {
+            id: 'line-1',
+            variantId: 'var-1',
+            quantity: dbInteger(2),
+            unitPricePesewas: pesewas(18900),
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'PSTCK',
+      hint: 'Oxford shirt',
+      details: 'variant_id=var-1',
+    })
+  })
 })
