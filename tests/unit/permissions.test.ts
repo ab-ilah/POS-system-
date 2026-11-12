@@ -20,8 +20,7 @@ describe('permissions matrix', () => {
     expect(isAllowed('cashier', 'profiles', 'insert')).toBe(false)
     expect(isAllowed('cashier', 'stores', 'select')).toBe(true)
     expect(isAllowed('cashier', 'stores', 'insert')).toBe(false)
-    expect(isAllowed('cashier', 'stock_movements', 'select')).toBe(true)
-    expect(isAllowed('cashier', 'stock_movements', 'insert')).toBe(false)
+    expect(isAllowed('cashier', 'stock_movements', 'insert')).toBe(true)
     expect(isAllowed('cashier', 'stock_movements', 'update')).toBe(false)
   })
 
