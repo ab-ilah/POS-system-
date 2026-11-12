@@ -1,4 +1,5 @@
 export { browserAuthGateway, signIn, visibleSignInMessage, type SignInResult } from './auth.ts'
+export { browserSessionReader, type SessionReader, type StaffSession } from './session.ts'
 export { createRowStore } from './row-store.ts'
 export { CommitSaleRpcError, isCommitSaleRpcError, type CommitSaleRpcErrorFields } from './commit-sale-rpc-error.ts'
 export { prepareSale, commitSale, type CommitSaleClient, type SaleCommand, type SaleInput } from './sales.ts'
