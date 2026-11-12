@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { assertAllowed, isAllowed, roleFromAppMetadata } from '../../src/lib/permissions.ts'
+import {
+  assertAllowed,
+  assertCanExecuteCommitSale,
+  canExecuteCommitSale,
+  isAllowed,
+  roleFromAppMetadata,
+} from '../../src/lib/permissions.ts'
 import { OPERATIONS, PERMISSIONS_MATRIX, ROLES, TABLES } from '../../src/shared/permissions.matrix.ts'
 
 describe('permissions matrix', () => {
@@ -12,9 +18,10 @@ describe('permissions matrix', () => {
     }
   })
 
-  it('lets a cashier ring a sale and blocks voiding sales or inserting profiles', () => {
-    expect(isAllowed('cashier', 'sales', 'insert')).toBe(true)
-    expect(isAllowed('cashier', 'sale_items', 'insert')).toBe(true)
+  it('lets a cashier ring a sale via commit_sale and blocks voiding sales or inserting profiles', () => {
+    expect(canExecuteCommitSale('cashier')).toBe(true)
+    expect(isAllowed('cashier', 'sales', 'insert')).toBe(false)
+    expect(isAllowed('cashier', 'sale_items', 'insert')).toBe(false)
     expect(isAllowed('cashier', 'sales', 'delete')).toBe(false)
     expect(isAllowed('cashier', 'sales', 'update')).toBe(false)
     expect(isAllowed('cashier', 'profiles', 'insert')).toBe(false)
@@ -27,9 +34,17 @@ describe('permissions matrix', () => {
 
   it('lets a manager complete or void a sale and blocks hard-deleting sales', () => {
     expect(isAllowed('owner', 'sales', 'delete')).toBe(false)
-    expect(isAllowed('manager', 'sales', 'insert')).toBe(true)
+    expect(canExecuteCommitSale('manager')).toBe(true)
+    expect(isAllowed('manager', 'sales', 'insert')).toBe(false)
     expect(isAllowed('manager', 'sales', 'update')).toBe(true)
     expect(isAllowed('manager', 'sales', 'delete')).toBe(false)
+  })
+
+  it('allows every matrix role to execute commit_sale', () => {
+    for (const role of ROLES) {
+      expect(canExecuteCommitSale(role)).toBe(true)
+      expect(() => assertCanExecuteCommitSale(role)).not.toThrow()
+    }
   })
 
   it('throws a stable message when the role is denied', () => {

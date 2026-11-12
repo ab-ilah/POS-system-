@@ -96,13 +96,13 @@ describe('commitSale', () => {
     })
 
     await expect(
-      commitSale(client, command, 'cashier', () => {
-        seen.push('denied')
+      commitSale(client, command, 'cashier', (role) => {
+        seen.push(role)
         throw new Error('denied')
       }),
     ).rejects.toThrow('denied')
 
-    expect(seen).toEqual(['denied'])
+    expect(seen).toEqual(['cashier'])
     expect(calls).toHaveLength(0)
   })
 })

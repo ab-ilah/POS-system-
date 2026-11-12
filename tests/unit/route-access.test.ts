@@ -5,16 +5,30 @@ import {
   defaultRouteForRole,
   visibleRoutesForRole,
 } from '../../src/lib/route-access.ts'
+import { canExecuteCommitSale } from '../../src/lib/permissions.ts'
 import { ROLES } from '../../src/shared/permissions.matrix.ts'
 
 describe('route access from permissions matrix', () => {
-  it('maps every nav item to matrix operations', () => {
+  it('maps every nav item to matrix operations or commit_sale', () => {
     for (const route of APP_ROUTES) {
       expect(route.requiresAll.length).toBeGreaterThan(0)
       for (const requirement of route.requiresAll) {
-        expect(requirement.table.length).toBeGreaterThan(0)
-        expect(requirement.operation.length).toBeGreaterThan(0)
+        if ('rpc' in requirement) {
+          expect(requirement.rpc).toBe('commit_sale')
+        } else {
+          expect(requirement.table.length).toBeGreaterThan(0)
+          expect(requirement.operation.length).toBeGreaterThan(0)
+        }
       }
+    }
+  })
+
+  it('gates Sell on commit_sale for every role that could ring a sale before', () => {
+    const sell = APP_ROUTES.find((route) => route.path === '/sell')
+    expect(sell?.requiresAll).toEqual([{ rpc: 'commit_sale' }])
+    for (const role of ROLES) {
+      expect(canExecuteCommitSale(role)).toBe(true)
+      expect(canAccessPath(role, '/sell')).toBe(true)
     }
   })
 

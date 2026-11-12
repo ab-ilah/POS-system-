@@ -69,8 +69,8 @@ describe('permissions matrix pin', () => {
 
   it('fails a local edit while the upstream file is still missing', () => {
     const edited = localSource.replace(
-      'Any staff member can record a sale',
-      'Any staff member can record a sale (edited)',
+      'New sales and completion go only through commit_sale',
+      'New sales and completion go only through commit_sale (edited)',
     )
     const decision = evaluatePermissionsSync({
       localSource: edited,
