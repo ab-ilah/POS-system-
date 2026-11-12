@@ -47,10 +47,12 @@ function mockClient(fn: CommitSaleClient['commitSale']): CommitSaleClient {
 }
 
 describe('mapCommitSaleFailure', () => {
-  it('maps P0004 idempotency_key_reuse to receipt-check copy and new sale plus line ids', () => {
-    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_reuse' }))
+  it('maps P0004 idempotency_key_conflict to receipt-check copy and new sale plus line ids', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_conflict' }))
     expect(mapped.code).toBe('P0004')
-    expect(mapped.userMessage).toMatch(/Check the last receipt/i)
+    expect(mapped.userMessage).toBe(
+      'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.',
+    )
     expect(mapped.assignNewSaleId).toBe(true)
     expect(mapped.regenerateLineIds).toBe(true)
   })
@@ -148,12 +150,12 @@ describe('checkoutCart', () => {
     expect(result).toEqual({ ok: true, saleId: 'sale-1', replayed: true })
   })
 
-  it('assigns a new sale id and new line ids on P0004 idempotency_key_reuse but keeps the items', async () => {
+  it('assigns a new sale id and new line ids on P0004 idempotency_key_conflict but keeps the items', async () => {
     const before = sampleCart()
     const after = await checkoutCart(
       before,
       mockClient(async () => {
-        throw rpcError('P0004', { message: 'idempotency_key_reuse' })
+        throw rpcError('P0004', { message: 'idempotency_key_conflict' })
       }),
       'cashier',
     )
@@ -164,6 +166,9 @@ describe('checkoutCart', () => {
       expect(after.cart.lines.map((l) => l.variantId)).toEqual(before.lines.map((l) => l.variantId))
       expect(after.cart.lines.map((l) => l.quantity)).toEqual(before.lines.map((l) => l.quantity))
       expect(after.cart.lines.map((l) => l.label)).toEqual(before.lines.map((l) => l.label))
+      expect(after.cart.lines.map((l) => l.unitPricePesewas)).toEqual(
+        before.lines.map((l) => l.unitPricePesewas),
+      )
     }
   })
 
