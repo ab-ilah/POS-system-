@@ -5,7 +5,7 @@ import { formatGhs, shelfPriceFromCedis } from '@/lib/money.ts'
 
 const exampleShelfPrice = formatGhs(shelfPriceFromCedis(189, 0))
 
-export function HomeScreen() {
+export function SellScreen() {
   const config = useQuery({
     queryKey: ['supabase-config'],
     queryFn: () => isSupabaseConfigured(),
@@ -15,7 +15,7 @@ export function HomeScreen() {
   return (
     <Shell>
       <section className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Register</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Sell</h1>
         <p className="max-w-xl text-muted-foreground">
           Shelf prices are tax-inclusive and kept as whole pesewas. The till formats them as Ghana cedis.
         </p>
