@@ -16,7 +16,7 @@ export type MappedCommitSaleFailure = {
 const REPLAY_MISMATCH =
   'This sale conflicts with an earlier one. Refresh the till and try again.'
 const IDEMPOTENCY_KEY_REUSE =
-  'This sale was already started with different items. Try Pay again.'
+  'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.'
 const INVALID_SALE_LINE =
   'Something in the cart could not be sent. Check the items and try again.'
 const EMPTY_SALE = 'Add at least one item before taking payment.'
@@ -64,14 +64,16 @@ function insufficientStockMessage(
 
 function mapP0004(error: CommitSaleRpcError): MappedCommitSaleFailure {
   const message = normaliseMessage(error.message)
+  // Backend: supabase/migrations/20261111120000_commit_sale_hardening.sql (idempotency_key_reuse)
   if (message === 'idempotency_key_reuse') {
     return {
       code: 'P0004',
       userMessage: IDEMPOTENCY_KEY_REUSE,
-      regenerateLineIds: false,
+      regenerateLineIds: true,
       assignNewSaleId: true,
     }
   }
+  // Backend: same migration (invalid sale line, empty sale, and other P0004 cases)
   if (message === 'invalid sale line') {
     return {
       code: 'P0004',
@@ -98,6 +100,7 @@ function mapP0004(error: CommitSaleRpcError): MappedCommitSaleFailure {
 
 function mapP0002(error: CommitSaleRpcError): MappedCommitSaleFailure {
   const message = normaliseMessage(error.message)
+  // Backend: supabase/migrations/20261111120000_commit_sale_hardening.sql (no such store, no such variant)
   if (message === 'no such store') {
     return {
       code: 'P0002',

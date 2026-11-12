@@ -47,11 +47,12 @@ function mockClient(fn: CommitSaleClient['commitSale']): CommitSaleClient {
 }
 
 describe('mapCommitSaleFailure', () => {
-  it('maps P0004 idempotency_key_reuse to a fresh-sale retry message', () => {
+  it('maps P0004 idempotency_key_reuse to receipt-check copy and new sale plus line ids', () => {
     const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_reuse' }))
     expect(mapped.code).toBe('P0004')
-    expect(mapped.userMessage).toMatch(/already started with different items/i)
+    expect(mapped.userMessage).toMatch(/Check the last receipt/i)
     expect(mapped.assignNewSaleId).toBe(true)
+    expect(mapped.regenerateLineIds).toBe(true)
   })
 
   it('maps P0004 invalid sale line to cashier copy', () => {
@@ -147,7 +148,7 @@ describe('checkoutCart', () => {
     expect(result).toEqual({ ok: true, saleId: 'sale-1', replayed: true })
   })
 
-  it('assigns a new sale id on P0004 idempotency_key_reuse but keeps the lines', async () => {
+  it('assigns a new sale id and new line ids on P0004 idempotency_key_reuse but keeps the items', async () => {
     const before = sampleCart()
     const after = await checkoutCart(
       before,
@@ -159,7 +160,10 @@ describe('checkoutCart', () => {
     expect(after.ok).toBe(false)
     if (!after.ok) {
       expect(after.cart.id).not.toBe(before.id)
-      expect(after.cart.lines).toEqual(before.lines)
+      expect(after.cart.lines.map((l) => l.id)).not.toEqual(before.lines.map((l) => l.id))
+      expect(after.cart.lines.map((l) => l.variantId)).toEqual(before.lines.map((l) => l.variantId))
+      expect(after.cart.lines.map((l) => l.quantity)).toEqual(before.lines.map((l) => l.quantity))
+      expect(after.cart.lines.map((l) => l.label)).toEqual(before.lines.map((l) => l.label))
     }
   })
 
