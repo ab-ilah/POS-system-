@@ -23,6 +23,20 @@ export function assertAllowed(role: Role, table: TableName, operation: Operation
   }
 }
 
+/**
+ * UI gate for ringing a sale via `commit_sale`. The vendored matrix is table-only;
+ * backend `GRANT EXECUTE` is on `authenticated`, and the function accepts owner, manager, and cashier.
+ */
+export function canExecuteCommitSale(role: Role): boolean {
+  return (ROLES as readonly string[]).includes(role)
+}
+
+export function assertCanExecuteCommitSale(role: Role): void {
+  if (!canExecuteCommitSale(role)) {
+    throw new Error(`${role} cannot execute commit_sale`)
+  }
+}
+
 export function roleFromAppMetadata(appMetadata: unknown): Role | null {
   if (typeof appMetadata !== 'object' || appMetadata === null || !('role' in appMetadata)) {
     return null

@@ -1,9 +1,9 @@
 import { dbInteger, lineTotal, sumPesewas, type Pesewas } from '../money.ts'
-import { assertAllowed } from '../permissions.ts'
-import type { Operation, Role, TableName } from '../../types/index.ts'
+import { assertCanExecuteCommitSale } from '../permissions.ts'
+import type { Role } from '../../types/index.ts'
 import type { SaleId, SaleLineId, StoreId, VariantId } from '../../types/index.ts'
 
-export type PermissionGate = (role: Role, table: TableName, operation: Operation) => void
+export type CommitSaleGate = (role: Role) => void
 
 export type SaleLineInput = {
   id?: SaleLineId
@@ -90,10 +90,9 @@ export async function commitSale(
   client: CommitSaleClient,
   command: SaleCommand,
   role: Role,
-  gate: PermissionGate = assertAllowed,
+  gate: CommitSaleGate = assertCanExecuteCommitSale,
 ): Promise<CommitSaleResult> {
-  gate(role, 'sales', 'insert')
-  gate(role, 'sale_items', 'insert')
+  gate(role)
   assertUniqueLineIds(command.lines)
   return client.commitSale({
     idempotencyKey: command.id,

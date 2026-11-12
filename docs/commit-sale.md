@@ -31,4 +31,4 @@ The idempotency key is the client-generated sale id. A retry sends the same key 
 
 ## TypeScript contract
 
-`src/types/database.ts` declares `Database['public']['Functions']['commit_sale']`. `createCommitSaleClient` in `src/lib/data/supabase.ts` calls `client.rpc('commit_sale', …)`. `commitSale` in `src/lib/data/sales.ts` checks insert permission for `sales` and `sale_lines`, then makes that single call.
+`src/types/database.ts` declares `Database['public']['Functions']['commit_sale']`. `createCommitSaleClient` in `src/lib/data/supabase.ts` calls `client.rpc('commit_sale', …)`. `commitSale` in `src/lib/data/sales.ts` checks `assertCanExecuteCommitSale` (the vendored matrix has no RPC rows; see `src/lib/permissions.ts`), then makes that single call.

@@ -1,17 +1,19 @@
-import { isAllowed } from '@/lib/permissions.ts'
+import { canExecuteCommitSale, isAllowed } from '@/lib/permissions.ts'
 import type { Operation, Role, TableName } from '@/shared/permissions.matrix.ts'
 
-export type RoutePermission = { table: TableName; operation: Operation }
+export type RouteTablePermission = { table: TableName; operation: Operation }
+export type RouteRpcPermission = { rpc: 'commit_sale' }
+export type RoutePermission = RouteTablePermission | RouteRpcPermission
 
 export type AppRoute = {
   path: string
   label: string
-  /** Every listed permission must be allowed for this role (via the vendored matrix). */
+  /** Every listed requirement must pass for this role (matrix row or commit_sale RPC gate). */
   requiresAll: readonly RoutePermission[]
 }
 
 export const APP_ROUTES: readonly AppRoute[] = [
-  { path: '/sell', label: 'Sell', requiresAll: [{ table: 'sales', operation: 'insert' }] },
+  { path: '/sell', label: 'Sell', requiresAll: [{ rpc: 'commit_sale' }] },
   { path: '/sales', label: 'Sales', requiresAll: [{ table: 'sales', operation: 'update' }] },
   { path: '/products', label: 'Products', requiresAll: [{ table: 'products', operation: 'insert' }] },
   {
@@ -42,8 +44,15 @@ export function routeForPath(pathname: string): AppRoute | undefined {
   return appRouteByPath.get(normalizeAppPath(pathname))
 }
 
+function meetsRouteRequirement(role: Role, requirement: RoutePermission): boolean {
+  if ('rpc' in requirement) {
+    return requirement.rpc === 'commit_sale' && canExecuteCommitSale(role)
+  }
+  return isAllowed(role, requirement.table, requirement.operation)
+}
+
 export function canAccessRoute(role: Role, route: AppRoute): boolean {
-  return route.requiresAll.every((requirement) => isAllowed(role, requirement.table, requirement.operation))
+  return route.requiresAll.every((requirement) => meetsRouteRequirement(role, requirement))
 }
 
 export function canAccessPath(role: Role, pathname: string): boolean {
