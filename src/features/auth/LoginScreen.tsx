@@ -1,6 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
 import { type FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { useStaffRole, useStaffSession } from '@/app/use-staff-session.ts'
+import { defaultRouteForRole } from '@/lib/route-access.ts'
 import { Shell } from '@/app/Shell.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.tsx'
@@ -13,12 +15,18 @@ export function LoginScreen() {
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { ready, session } = useStaffSession()
+  const role = useStaffRole()
   const mutation = useMutation({
     mutationFn: (credentials: { email: string; password: string }) => signIn(credentials, browserAuthGateway()),
     onSuccess: (result) => {
       if (result.ok) navigate('/')
     },
   })
+
+  if (ready && session && role) {
+    return <Navigate to={defaultRouteForRole(role)} replace />
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
