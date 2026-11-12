@@ -1,9 +1,66 @@
+import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { evaluatePermissionsSync, matrixBodyHash } from '../../scripts/sync-permissions-matrix.mjs'
+import {
+  ALLOWED_BACKEND_REFS,
+  backendMatrixUrl,
+  evaluatePermissionsSync,
+  matrixBodyHash,
+  resolveBackendRef,
+} from '../../scripts/sync-permissions-matrix.mjs'
 
 const localSource = await readFile('src/shared/permissions.matrix.ts', 'utf8')
 const pinnedHash = (await readFile('src/shared/permissions.matrix.sha256', 'utf8')).trim()
+const syncScript = join(process.cwd(), 'scripts/sync-permissions-matrix.mjs')
+
+function runSyncScript(backendRef: string | undefined) {
+  const env = { ...process.env }
+  if (backendRef === undefined) {
+    delete env.BACKEND_REF
+  } else {
+    env.BACKEND_REF = backendRef
+  }
+  return spawnSync(process.execPath, [syncScript], {
+    env,
+    encoding: 'utf8',
+    timeout: 3_000,
+  })
+}
+
+describe('resolveBackendRef', () => {
+  it('defaults to staging when unset', () => {
+    expect(resolveBackendRef({})).toBe('staging')
+    expect(resolveBackendRef({ BACKEND_REF: undefined })).toBe('staging')
+  })
+
+  it('rejects empty or whitespace-only values', () => {
+    expect(() => resolveBackendRef({ BACKEND_REF: '' })).toThrow(/BACKEND_REF is empty/)
+    expect(() => resolveBackendRef({ BACKEND_REF: '   ' })).toThrow(/BACKEND_REF is empty/)
+  })
+
+  it('accepts main and staging, trimming surrounding whitespace', () => {
+    expect(resolveBackendRef({ BACKEND_REF: 'main' })).toBe('main')
+    expect(resolveBackendRef({ BACKEND_REF: 'staging' })).toBe('staging')
+    expect(resolveBackendRef({ BACKEND_REF: ' staging ' })).toBe('staging')
+    expect(ALLOWED_BACKEND_REFS).toEqual(['main', 'staging'])
+    expect(backendMatrixUrl(' staging ')).toContain('/staging/shared/permissions.matrix.ts')
+  })
+
+  it('rejects other branch names', () => {
+    expect(() => resolveBackendRef({ BACKEND_REF: 'dev' })).toThrow(/BACKEND_REF must be one of/)
+  })
+})
+
+describe('permissions sync CLI', () => {
+  it('exits 1 for invalid BACKEND_REF without fetching (fast timeout)', () => {
+    for (const badRef of ['', '   ', 'dev']) {
+      const result = runSyncScript(badRef)
+      expect(result.status).toBe(1)
+      expect(result.stderr + result.stdout).toMatch(/BACKEND_REF/)
+    }
+  })
+})
 
 describe('permissions matrix pin', () => {
   it('matches the vendored file', () => {
