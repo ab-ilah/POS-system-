@@ -9,31 +9,109 @@ export type MappedCommitSaleFailure = {
   userMessage: string
   /** When true, the caller should assign new line ids before the cashier retries. */
   regenerateLineIds: boolean
+  /** When true, the caller should assign a new sale idempotency key and keep the lines. */
+  assignNewSaleId: boolean
 }
 
 const REPLAY_MISMATCH =
   'This sale conflicts with an earlier one. Refresh the till and try again.'
-const DUPLICATE_LINE_ID =
-  'A cart line clashed with the server. New line ids were assigned — try again.'
+const IDEMPOTENCY_KEY_REUSE =
+  'This sale was already started with different items. Try Pay again.'
+const INVALID_SALE_LINE =
+  'Something in the cart could not be sent. Check the items and try again.'
+const EMPTY_SALE = 'Add at least one item before taking payment.'
+const DUPLICATE_LINE_RETRY =
+  'The till could not save this cart. Tap Pay again.'
 const UNKNOWN_ITEM =
   'That item is no longer on the catalogue. Remove it from the cart and try again.'
+const UNKNOWN_STORE =
+  'This shop is not recognised. Sign out and sign in again, or ask a manager.'
 
 function normaliseSqlState(code: string): string {
   return code.trim().toUpperCase()
 }
 
-function itemNameFromRpcError(error: CommitSaleRpcError): string | null {
-  if (error.hint) return error.hint
-  if (!error.details) return null
-  const named = error.details.match(/^(?:item|variant|product)(?:_name)?\s*[=:]\s*(.+)$/i)
-  if (named?.[1]) return named[1].trim()
-  return error.details
+function normaliseMessage(message: string): string {
+  return message.trim().toLowerCase()
 }
 
-function insufficientStockMessage(error: CommitSaleRpcError, fallbackLabel?: string): string {
-  const named = itemNameFromRpcError(error) ?? fallbackLabel
+function variantIdFromDetails(details: string | undefined): string | null {
+  if (!details) return null
+  const match = details.match(/variant_id\s*[=:]\s*(\S+)/i)
+  return match?.[1] ?? null
+}
+
+function stockItemLabel(
+  error: CommitSaleRpcError,
+  context?: { lineLabelByVariantId?: ReadonlyMap<string, string> },
+): string | null {
+  if (error.hint) return error.hint
+  const variantId = variantIdFromDetails(error.details)
+  if (variantId && context?.lineLabelByVariantId) {
+    return context.lineLabelByVariantId.get(variantId) ?? null
+  }
+  return null
+}
+
+function insufficientStockMessage(
+  error: CommitSaleRpcError,
+  context?: { lineLabelByVariantId?: ReadonlyMap<string, string> },
+): string {
+  const named = stockItemLabel(error, context)
   if (named) return `Not enough stock left for ${named}. Reduce the quantity or remove the line.`
   return 'Not enough stock left for an item in the cart. Reduce quantities or remove a line.'
+}
+
+function mapP0004(error: CommitSaleRpcError): MappedCommitSaleFailure {
+  const message = normaliseMessage(error.message)
+  if (message === 'idempotency_key_reuse') {
+    return {
+      code: 'P0004',
+      userMessage: IDEMPOTENCY_KEY_REUSE,
+      regenerateLineIds: false,
+      assignNewSaleId: true,
+    }
+  }
+  if (message === 'invalid sale line') {
+    return {
+      code: 'P0004',
+      userMessage: INVALID_SALE_LINE,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
+  }
+  if (message === 'a sale needs at least one line') {
+    return {
+      code: 'P0004',
+      userMessage: EMPTY_SALE,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
+  }
+  return {
+    code: 'P0004',
+    userMessage: REPLAY_MISMATCH,
+    regenerateLineIds: false,
+    assignNewSaleId: false,
+  }
+}
+
+function mapP0002(error: CommitSaleRpcError): MappedCommitSaleFailure {
+  const message = normaliseMessage(error.message)
+  if (message === 'no such store') {
+    return {
+      code: 'P0002',
+      userMessage: UNKNOWN_STORE,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
+  }
+  return {
+    code: 'P0002',
+    userMessage: UNKNOWN_ITEM,
+    regenerateLineIds: false,
+    assignNewSaleId: false,
+  }
 }
 
 export function mapCommitSaleFailure(
@@ -41,40 +119,55 @@ export function mapCommitSaleFailure(
   context?: { lineLabelByVariantId?: ReadonlyMap<string, string> },
 ): MappedCommitSaleFailure {
   if (error instanceof CommitSaleTimeoutError) {
-    return { code: 'generic', userMessage: EMPTY_ERROR_FALLBACK, regenerateLineIds: false }
+    return {
+      code: 'generic',
+      userMessage: EMPTY_ERROR_FALLBACK,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
   }
 
   if (!isCommitSaleRpcError(error)) {
-    return { code: 'generic', userMessage: EMPTY_ERROR_FALLBACK, regenerateLineIds: false }
+    return {
+      code: 'generic',
+      userMessage: EMPTY_ERROR_FALLBACK,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
   }
 
   const sqlState = normaliseSqlState(error.code)
 
   if (sqlState === 'P0004') {
-    return { code: 'P0004', userMessage: REPLAY_MISMATCH, regenerateLineIds: false }
+    return mapP0004(error)
   }
 
   if (sqlState === 'P0005') {
-    return { code: 'P0005', userMessage: DUPLICATE_LINE_ID, regenerateLineIds: true }
+    return {
+      code: 'P0005',
+      userMessage: DUPLICATE_LINE_RETRY,
+      regenerateLineIds: true,
+      assignNewSaleId: false,
+    }
   }
 
   if (sqlState === 'P0002') {
-    return { code: 'P0002', userMessage: UNKNOWN_ITEM, regenerateLineIds: false }
+    return mapP0002(error)
   }
 
   if (sqlState === 'PSTCK') {
-    let fallbackLabel: string | undefined
-    const variantMatch = error.details?.match(/variant_id\s*[=:]\s*([0-9a-f-]{36})/i)
-    const variantId = variantMatch?.[1]
-    if (variantId && context?.lineLabelByVariantId) {
-      fallbackLabel = context.lineLabelByVariantId.get(variantId)
-    }
     return {
       code: 'PSTCK',
-      userMessage: insufficientStockMessage(error, fallbackLabel),
+      userMessage: insufficientStockMessage(error, context),
       regenerateLineIds: false,
+      assignNewSaleId: false,
     }
   }
 
-  return { code: 'generic', userMessage: EMPTY_ERROR_FALLBACK, regenerateLineIds: false }
+  return {
+    code: 'generic',
+    userMessage: EMPTY_ERROR_FALLBACK,
+    regenerateLineIds: false,
+    assignNewSaleId: false,
+  }
 }

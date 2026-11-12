@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { Shell } from '@/app/Shell.tsx'
-import { CheckoutPanel } from '@/features/checkout/CheckoutPanel.tsx'
 import { isSupabaseConfigured } from '@/lib/data/index.ts'
 import { formatGhs, shelfPriceFromCedis } from '@/lib/money.ts'
 
@@ -28,7 +27,6 @@ export function HomeScreen() {
             ? 'Supabase environment is set.'
             : 'Supabase environment is not set. Copy .env.example to .env.local.'}
         </p>
-        <CheckoutPanel />
       </section>
     </Shell>
   )

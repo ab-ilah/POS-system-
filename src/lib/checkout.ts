@@ -1,5 +1,11 @@
 import { mapCommitSaleFailure } from './commit-sale-errors.ts'
-import { cartLineLabels, cloneCart, regenerateCartLineIds, type Cart } from './cart.ts'
+import {
+  cartLineLabels,
+  cloneCart,
+  regenerateCartLineIds,
+  regenerateCartSaleId,
+  type Cart,
+} from './cart.ts'
 import { commitSale, prepareSale, type CommitSaleClient, type CommitSaleResult } from './data/sales.ts'
 import type { Role } from '../types/index.ts'
 
@@ -7,8 +13,6 @@ export type CheckoutSuccess = {
   ok: true
   saleId: string
   replayed: boolean
-  /** When true, skip one-off success effects such as printing a second receipt. */
-  skipDuplicateSuccessEffects: boolean
 }
 
 export type CheckoutFailure = {
@@ -32,6 +36,17 @@ function saleCommandFromCart(cart: Cart) {
   })
 }
 
+function cartAfterFailure(cart: Cart, mapped: ReturnType<typeof mapCommitSaleFailure>): Cart {
+  let nextCart = cart
+  if (mapped.assignNewSaleId) {
+    nextCart = regenerateCartSaleId(nextCart)
+  }
+  if (mapped.regenerateLineIds) {
+    nextCart = regenerateCartLineIds(nextCart)
+  }
+  return nextCart
+}
+
 export async function checkoutCart(
   cart: Cart,
   client: CommitSaleClient,
@@ -44,14 +59,9 @@ export async function checkoutCart(
       ok: true,
       saleId: result.saleId,
       replayed: result.replayed,
-      skipDuplicateSuccessEffects: result.replayed,
     }
   } catch (error) {
     const mapped = mapCommitSaleFailure(error, { lineLabelByVariantId: cartLineLabels(snapshot) })
-    let nextCart = snapshot
-    if (mapped.regenerateLineIds) {
-      nextCart = regenerateCartLineIds(snapshot)
-    }
-    return { ok: false, userMessage: mapped.userMessage, cart: nextCart }
+    return { ok: false, userMessage: mapped.userMessage, cart: cartAfterFailure(snapshot, mapped) }
   }
 }

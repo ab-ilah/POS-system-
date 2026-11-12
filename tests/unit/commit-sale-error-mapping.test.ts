@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cloneCart, regenerateCartLineIds, type Cart } from '../../src/lib/cart.ts'
 import { mapCommitSaleFailure } from '../../src/lib/commit-sale-errors.ts'
-import { checkoutCart, type CheckoutResult } from '../../src/lib/checkout.ts'
+import { checkoutCart } from '../../src/lib/checkout.ts'
 import { CommitSaleRpcError } from '../../src/lib/data/commit-sale-rpc-error.ts'
 import { CommitSaleTimeoutError } from '../../src/lib/data/commit-sale-call.ts'
 import { shelfPriceFromCedis } from '../../src/lib/money.ts'
@@ -15,6 +15,11 @@ function rpcError(code: string, fields?: { details?: string; hint?: string; mess
     hint: fields?.hint,
   })
 }
+
+const labels = new Map([
+  ['var-shirt', 'Oxford shirt'],
+  ['var-thread', 'Thread spool'],
+])
 
 const sampleCart = (): Cart => ({
   id: 'sale-1',
@@ -42,38 +47,85 @@ function mockClient(fn: CommitSaleClient['commitSale']): CommitSaleClient {
 }
 
 describe('mapCommitSaleFailure', () => {
-  it('maps P0004 replay mismatch to a refresh message', () => {
-    const mapped = mapCommitSaleFailure(rpcError('P0004'))
+  it('maps P0004 idempotency_key_reuse to a fresh-sale retry message', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_reuse' }))
     expect(mapped.code).toBe('P0004')
-    expect(mapped.userMessage).toMatch(/conflicts with an earlier one/i)
-    expect(mapped.regenerateLineIds).toBe(false)
+    expect(mapped.userMessage).toMatch(/already started with different items/i)
+    expect(mapped.assignNewSaleId).toBe(true)
   })
 
-  it('maps P0005 duplicate line id and asks to regenerate line ids', () => {
-    const mapped = mapCommitSaleFailure(rpcError('P0005'))
+  it('maps P0004 invalid sale line to cashier copy', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'invalid sale line' }))
+    expect(mapped.userMessage).toMatch(/could not be sent/i)
+    expect(mapped.assignNewSaleId).toBe(false)
+  })
+
+  it('maps P0004 empty sale to cashier copy', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'a sale needs at least one line' }))
+    expect(mapped.userMessage).toMatch(/Add at least one item/i)
+  })
+
+  it('maps unknown P0004 messages to the replay-mismatch fallback', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'payload drift' }))
+    expect(mapped.userMessage).toMatch(/conflicts with an earlier one/i)
+    expect(mapped.assignNewSaleId).toBe(false)
+  })
+
+  it('maps P0005 in plain cashier language without mentioning line ids', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0005', { message: 'duplicate sale line id' }))
     expect(mapped.code).toBe('P0005')
-    expect(mapped.userMessage).toMatch(/line ids were assigned/i)
+    expect(mapped.userMessage).toMatch(/Tap Pay again/i)
+    expect(mapped.userMessage).not.toMatch(/line id/i)
     expect(mapped.regenerateLineIds).toBe(true)
   })
 
-  it('maps PSTCK using the hint as the item name', () => {
+  it('maps PSTCK from hint only', () => {
     const mapped = mapCommitSaleFailure(
-      rpcError('PSTCK', { hint: 'Oxford shirt — navy · M', details: 'variant_id=var-shirt' }),
+      rpcError('PSTCK', { message: 'insufficient stock', hint: 'Oxford shirt — navy · M' }),
+      { lineLabelByVariantId: labels },
     )
-    expect(mapped.code).toBe('PSTCK')
     expect(mapped.userMessage).toContain('Oxford shirt — navy · M')
-    expect(mapped.regenerateLineIds).toBe(false)
   })
 
-  it('maps P0002 to an unknown-item message', () => {
-    const mapped = mapCommitSaleFailure(rpcError('P0002'))
-    expect(mapped.code).toBe('P0002')
+  it('maps PSTCK from variant_id in details using the cart label', () => {
+    const mapped = mapCommitSaleFailure(
+      rpcError('PSTCK', {
+        message: 'insufficient stock',
+        details: 'variant_id=var-shirt',
+      }),
+      { lineLabelByVariantId: labels },
+    )
+    expect(mapped.userMessage).toContain('Oxford shirt')
+    expect(mapped.userMessage).not.toContain('variant_id')
+  })
+
+  it('maps PSTCK without hint or resolvable variant to a generic stock message', () => {
+    const mapped = mapCommitSaleFailure(rpcError('PSTCK', { message: 'insufficient stock' }), {
+      lineLabelByVariantId: labels,
+    })
+    expect(mapped.userMessage).toMatch(/an item in the cart/i)
+    expect(mapped.userMessage).not.toMatch(/variant_id/)
+  })
+
+  it('maps P0002 no such variant to an unknown-item message', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0002', { message: 'no such variant' }))
     expect(mapped.userMessage).toMatch(/catalogue/i)
-    expect(mapped.regenerateLineIds).toBe(false)
+  })
+
+  it('maps P0002 no such store to unknown-shop copy', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0002', { message: 'no such store' }))
+    expect(mapped.userMessage).toMatch(/shop is not recognised/i)
+    expect(mapped.userMessage).not.toMatch(/catalogue/i)
   })
 
   it('maps any other RPC code to the generic retry message', () => {
     const mapped = mapCommitSaleFailure(rpcError('XX999'))
+    expect(mapped.code).toBe('generic')
+    expect(mapped.userMessage).toBe('Something went wrong. Please try again.')
+  })
+
+  it('maps a plain Error to the generic retry message', () => {
+    const mapped = mapCommitSaleFailure(new Error('network blew up'))
     expect(mapped.code).toBe('generic')
     expect(mapped.userMessage).toBe('Something went wrong. Please try again.')
   })
@@ -86,37 +138,76 @@ describe('mapCommitSaleFailure', () => {
 })
 
 describe('checkoutCart', () => {
-  it('treats replayed:true as success without duplicate success effects', async () => {
+  it('treats replayed:true as success', async () => {
     const result = await checkoutCart(
       sampleCart(),
       mockClient(async () => ({ saleId: 'sale-1', replayed: true })),
       'cashier',
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.replayed).toBe(true)
-      expect(result.skipDuplicateSuccessEffects).toBe(true)
-    }
+    expect(result).toEqual({ ok: true, saleId: 'sale-1', replayed: true })
   })
 
-  it('preserves the cart on P0004', async () => {
+  it('assigns a new sale id on P0004 idempotency_key_reuse but keeps the lines', async () => {
     const before = sampleCart()
-    const after: CheckoutResult = await checkoutCart(
+    const after = await checkoutCart(
       before,
       mockClient(async () => {
-        throw rpcError('P0004')
+        throw rpcError('P0004', { message: 'idempotency_key_reuse' })
       }),
       'cashier',
     )
     expect(after.ok).toBe(false)
     if (!after.ok) {
-      expect(after.cart).toEqual(before)
+      expect(after.cart.id).not.toBe(before.id)
+      expect(after.cart.lines).toEqual(before.lines)
     }
+  })
+
+  it('preserves the cart on P0004 invalid sale line', async () => {
+    const before = sampleCart()
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0004', { message: 'invalid sale line' })
+      }),
+      'cashier',
+    )
+    expect(!after.ok && after.cart).toEqual(before)
+  })
+
+  it('preserves the cart on P0004 empty sale', async () => {
+    const before = sampleCart()
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0004', { message: 'a sale needs at least one line' })
+      }),
+      'cashier',
+    )
+    expect(!after.ok && after.cart).toEqual(before)
+  })
+
+  it('preserves the cart on P0004 replay-mismatch fallback', async () => {
+    const before = sampleCart()
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0004', { message: 'unknown p0004' })
+      }),
+      'cashier',
+    )
+    expect(!after.ok && after.cart).toEqual(before)
   })
 
   it('preserves cart lines but regenerates line ids on P0005', async () => {
     const before = sampleCart()
-    const after = await checkoutCart(before, mockClient(async () => { throw rpcError('P0005') }), 'cashier')
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0005', { message: 'duplicate sale line id' })
+      }),
+      'cashier',
+    )
     expect(after.ok).toBe(false)
     if (!after.ok) {
       expect(after.cart.lines).toHaveLength(2)
@@ -129,25 +220,38 @@ describe('checkoutCart', () => {
     const before = sampleCart()
     const after = await checkoutCart(
       before,
-      mockClient(async () => { throw rpcError('PSTCK', { hint: 'Oxford shirt' }) }),
+      mockClient(async () => {
+        throw rpcError('PSTCK', { message: 'insufficient stock' })
+      }),
       'cashier',
     )
-    expect(after.ok).toBe(false)
+    expect(!after.ok && after.cart).toEqual(before)
     if (!after.ok) {
-      expect(after.cart).toEqual(before)
-      expect(after.userMessage).toContain('Oxford shirt')
+      expect(after.userMessage).toMatch(/an item in the cart/i)
     }
   })
 
-  it('preserves the cart on P0002', async () => {
+  it('preserves the cart on P0002 unknown item', async () => {
     const before = sampleCart()
-    const after = await checkoutCart(before, mockClient(async () => { throw rpcError('P0002') }), 'cashier')
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0002', { message: 'no such variant' })
+      }),
+      'cashier',
+    )
     expect(!after.ok && after.cart).toEqual(before)
   })
 
   it('preserves the cart on a generic RPC failure', async () => {
     const before = sampleCart()
-    const after = await checkoutCart(before, mockClient(async () => { throw rpcError('P9999') }), 'cashier')
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P9999')
+      }),
+      'cashier',
+    )
     expect(!after.ok && after.cart).toEqual(before)
   })
 })

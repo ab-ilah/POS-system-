@@ -5,6 +5,12 @@ export { prepareSale, commitSale, type CommitSaleClient, type SaleCommand, type 
 export { createCommitSaleClient, isSupabaseConfigured } from './supabase.ts'
 export { checkoutCart, type CheckoutFailure, type CheckoutResult, type CheckoutSuccess } from '../checkout.ts'
 export { mapCommitSaleFailure, type CommitSaleFailureCode, type MappedCommitSaleFailure } from '../commit-sale-errors.ts'
-export { cloneCart, regenerateCartLineIds, type Cart, type CartLine } from '../cart.ts'
+export {
+  cloneCart,
+  regenerateCartLineIds,
+  regenerateCartSaleId,
+  type Cart,
+  type CartLine,
+} from '../cart.ts'
 export { browserCheckoutCart } from './checkout-gateway.ts'
 export type { AuthGateway, RowStore } from './types.ts'

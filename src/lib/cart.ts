@@ -27,6 +27,10 @@ export function regenerateCartLineIds(cart: Cart, newId: () => string = () => cr
   }
 }
 
+export function regenerateCartSaleId(cart: Cart, newId: () => string = () => crypto.randomUUID()): Cart {
+  return { ...cart, id: newId() }
+}
+
 export function cloneCart(cart: Cart): Cart {
   return {
     id: cart.id,
