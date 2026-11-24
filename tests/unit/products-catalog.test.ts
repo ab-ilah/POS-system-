@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { demoListProducts, demoUpsertVariant } from '../../src/lib/data/demo-product-store.ts'
-import { fetchProductList, friendlyProductError } from '../../src/lib/data/products.ts'
+import { friendlyProductError } from '../../src/lib/data/products.ts'
 import { validateProductInput, validateVariantInput } from '../../src/lib/products/validation.ts'
 import { pesewas, shelfPriceFromCedis } from '../../src/lib/money.ts'
 
@@ -54,8 +54,4 @@ describe('products catalogue', () => {
     ).toThrow(/SKU/i)
   })
 
-  it('loads demo list when Supabase is not configured', async () => {
-    const rows = await fetchProductList({ search: '', category: 'all', includeArchived: false })
-    expect(rows.length).toBeGreaterThan(0)
-  })
 })

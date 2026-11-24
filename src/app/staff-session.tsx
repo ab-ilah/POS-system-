@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Role } from '@/shared/permissions.matrix.ts'
 import { roleFromAppMetadata } from '@/lib/permissions.ts'
-import { readE2eAssistRole } from '@/features/e2e/E2eAssistScreen.tsx'
+import { readE2eAssistRole } from '@/lib/e2e-assist.ts'
 import { browserSessionReader, type StaffSession } from '@/lib/data/session.ts'
 import { StaffSessionContext, type StaffSessionState } from '@/app/staff-session-context.ts'
 

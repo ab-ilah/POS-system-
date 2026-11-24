@@ -45,11 +45,13 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
   const { ready, session } = useStaffSession()
   const sessionKey = session?.userId ?? 'signed-out'
   const [cart, setCart] = useState<Cart>(() => createCart(storeId))
+  const [cartHydrated, setCartHydrated] = useState(false)
   const hadCommitAttempt = useRef(false)
   const priorSession = useRef<string | null>(null)
 
   useEffect(() => {
     if (!ready) return
+    setCartHydrated(false)
     if (priorSession.current !== null && priorSession.current !== sessionKey) {
       writeStoredCart(priorSession.current, null)
     }
@@ -60,6 +62,7 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
       }
       setCart(createCart(storeId))
       hadCommitAttempt.current = false
+      setCartHydrated(true)
       return
     }
     for (const key of Object.keys(localStorage)) {
@@ -70,12 +73,13 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
     const stored = readStoredCart(sessionKey, storeId)
     if (stored) setCart(stored)
     else setCart(createCart(storeId))
+    setCartHydrated(true)
   }, [ready, session, sessionKey, storeId])
 
   useEffect(() => {
-    if (!ready || !session) return
+    if (!ready || !session || !cartHydrated) return
     writeStoredCart(sessionKey, cart)
-  }, [cart, ready, session, sessionKey])
+  }, [cart, cartHydrated, ready, session, sessionKey])
 
   const replaceCart = useCallback((next: Cart) => {
     setCart(next)
@@ -91,20 +95,29 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
     })
   }, [])
 
+  const applyLineEdit = useCallback((edit: (previous: Cart) => Cart) => {
+    const mintOnEdit = hadCommitAttempt.current
+    setCart((previous) => {
+      const resolved = edit(previous)
+      return mintOnEdit ? cartAfterLineEdit(previous, resolved) : resolved
+    })
+    if (mintOnEdit) {
+      hadCommitAttempt.current = false
+    }
+  }, [])
+
   const addLine = useCallback(
     (input: CartLineInput) => {
-      hadCommitAttempt.current = false
-      updateCart((previous) => addCartLine(previous, input))
+      applyLineEdit((previous) => addCartLine(previous, input))
     },
-    [updateCart],
+    [applyLineEdit],
   )
 
   const changeQuantity = useCallback(
     (lineId: string, delta: number) => {
-      hadCommitAttempt.current = false
-      updateCart((previous) => changeCartLineQuantity(previous, lineId, delta))
+      applyLineEdit((previous) => changeCartLineQuantity(previous, lineId, delta))
     },
-    [updateCart],
+    [applyLineEdit],
   )
 
   const clearCart = useCallback(() => {
@@ -128,6 +141,7 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
   return useMemo(
     () => ({
       cart,
+      cartHydrated,
       addLine,
       changeQuantity,
       clearCart,
@@ -137,6 +151,17 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
       setCart: updateCart,
       replaceCart,
     }),
-    [addLine, cart, changeQuantity, clearCart, clearCommitAttempt, markCommitAttempt, mintNewSaleId, replaceCart, updateCart],
+    [
+      addLine,
+      cart,
+      cartHydrated,
+      changeQuantity,
+      clearCart,
+      clearCommitAttempt,
+      markCommitAttempt,
+      mintNewSaleId,
+      replaceCart,
+      updateCart,
+    ],
   )
 }

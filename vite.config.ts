@@ -6,6 +6,9 @@ import { defineConfig } from 'vitest/config'
 
 // Offline strategy is a later ADR. The plugin stays installed and disabled.
 export default defineConfig({
+  define: {
+    __POS_DEV_E2E_ASSIST__: JSON.stringify(process.env.VITE_E2E_ASSIST === 'true'),
+  },
   plugins: [
     react(),
     tailwindcss(),

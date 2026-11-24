@@ -131,6 +131,32 @@ export function ProductFormScreen({ mode }: { mode: 'create' | 'edit' }) {
     return <p className="text-sm text-muted-foreground">Loading…</p>
   }
 
+  if (mode === 'edit' && existing.isError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-destructive" role="alert">
+          {(existing.error as Error).message}
+        </p>
+        <Button type="button" variant="outline" className="min-h-11" asChild>
+          <Link to="/products">Back to products</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  if (mode === 'edit' && !existing.isLoading && existing.data == null) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-muted-foreground">Product not found.</p>
+        <Button type="button" variant="outline" className="min-h-11" asChild>
+          <Link to="/products">Back to products</Link>
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       <div className="space-y-1">
@@ -254,7 +280,14 @@ export function ProductFormScreen({ mode }: { mode: 'create' | 'edit' }) {
                 />
               </div>
             </div>
-            {variantMessage ? <p className="text-sm text-muted-foreground sm:col-span-2">{variantMessage}</p> : null}
+            {variantMessage ? (
+              <p
+                className={`text-sm sm:col-span-2 ${Object.keys(variantErrors).length > 0 || variantMessage.includes('SKU') || variantMessage.includes('permission') ? 'text-destructive' : 'text-muted-foreground'}`}
+                role="alert"
+              >
+                {variantMessage}
+              </p>
+            ) : null}
             <Button type="submit" className="min-h-11 sm:col-span-2" disabled={saveVariant.isPending}>
               {editingVariantId ? 'Save variant' : 'Add variant'}
             </Button>

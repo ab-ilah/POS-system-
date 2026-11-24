@@ -147,7 +147,8 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const checkoutRestored = useRef(false)
   const checkoutInFlight = useRef(false)
   const { refreshCartShelfPrices } = useShelfPriceRefresh()
-  const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } = sellCart
+  const { cart, cartHydrated, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } =
+    sellCart
 
   const locked =
     phase === 'committing' ||
@@ -185,7 +186,7 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   )
 
   useEffect(() => {
-    if (!session || checkoutRestored.current) return
+    if (!session || !cartHydrated || checkoutRestored.current) return
     const persisted = readPersistedCheckoutState(sessionKey, cart.id)
     if (!persisted) return
     checkoutRestored.current = true
@@ -193,14 +194,15 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
     setErrorMessage(persisted.errorMessage)
     setPriceRefreshContext(persisted.priceRefreshContext)
     setPriceRefreshStatus(persisted.priceRefreshStatus === 'idle' ? 'loading' : persisted.priceRefreshStatus)
+    markCommitAttempt()
     if (persisted.priceRefreshStatus === 'loading' && persisted.priceRefreshContext) {
       const ctx = persisted.priceRefreshContext
       void runShelfPriceRefresh(ctx.cart, ctx.variantIds, ctx.userMessage)
     }
-  }, [cart.id, runShelfPriceRefresh, session, sessionKey])
+  }, [cart.id, cartHydrated, markCommitAttempt, runShelfPriceRefresh, session, sessionKey])
 
   useEffect(() => {
-    if (!session) return
+    if (!session || !cartHydrated) return
     if (phase !== 'price_confirm') {
       writePersistedCheckoutState(sessionKey, null)
       return
@@ -212,7 +214,7 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       priceRefreshStatus,
       priceRefreshContext,
     })
-  }, [cart.id, errorMessage, phase, priceRefreshContext, priceRefreshStatus, session, sessionKey])
+  }, [cart.id, cartHydrated, errorMessage, phase, priceRefreshContext, priceRefreshStatus, session, sessionKey])
 
   const handleCheckoutResult = useCallback(
     (result: CheckoutResult) => {

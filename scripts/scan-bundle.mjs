@@ -73,10 +73,18 @@ export async function scanDirectory(directory, options = {}) {
     throw new Error(`Bundle directory does not exist: ${directory}`)
   }
 
+  const forbiddenDevStrings = ['demo-product-store', 'E2eAssistRoutes', '/__e2e/as/']
+
   const findings = []
   for (const file of await walk(directory)) {
     const text = await readFile(file)
-    findings.push(...scanText(text.toString('utf8'), options, file))
+    const contents = text.toString('utf8')
+    findings.push(...scanText(contents, options, file))
+    for (const needle of forbiddenDevStrings) {
+      if (contents.includes(needle)) {
+        findings.push({ file, reason: `found dev-only artefact string: ${needle}` })
+      }
+    }
   }
   return findings
 }

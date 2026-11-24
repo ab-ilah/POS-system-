@@ -62,7 +62,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: http://127.0.0.1:54321
           VITE_SUPABASE_ANON_KEY: ci-placeholder-not-a-credential
-          VITE_E2E_ASSIST: 'true'
 
       - name: Scan bundle
         run: npm run scan:bundle
@@ -73,5 +72,5 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Playwright smoke test
+      - name: Playwright e2e tests
         run: npm run test:e2e

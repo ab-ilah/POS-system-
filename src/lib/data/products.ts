@@ -1,20 +1,66 @@
-import {
-  demoCreateProduct,
-  demoGetProduct,
-  demoListProducts,
-  demoSetProductActive,
-  demoUpdateProduct,
-  demoUpsertVariant,
-} from '@/lib/data/demo-product-store.ts'
 import { browserSupabase, isSupabaseConfigured } from '@/lib/data/supabase.ts'
-import { pesewas } from '@/lib/money.ts'
+import { pesewas, type Pesewas } from '@/lib/money.ts'
 import type { ProductInput, ProductVariantRow, ProductWithVariants, VariantInput } from '@/lib/products/types.ts'
 import type { ProductCategoryDb } from '@/types/database.ts'
 
 export const PRODUCTS_QUERY_KEY = ['products'] as const
 
-function shouldUseDemoCatalog(): boolean {
-  return !isSupabaseConfigured() || import.meta.env.VITE_E2E_ASSIST === 'true'
+export const PRODUCT_VARIANT_UPDATE_COLUMNS = [
+  'product_id',
+  'sku',
+  'size_name',
+  'colour_name',
+  'price_pesewas',
+  'low_stock_threshold',
+] as const
+
+export type ProductVariantUpdatePayload = {
+  product_id: string
+  sku: string
+  size_name: string
+  colour_name: string
+  price_pesewas: Pesewas
+  low_stock_threshold: number
+}
+
+const CATALOG_UNAVAILABLE =
+  'The catalogue could not be loaded. Sign in with a connection to the shop database and try again.'
+
+import { normalizeSku } from '@/lib/products/sku.ts'
+
+export function buildProductVariantUpdatePayload(
+  productId: string,
+  input: VariantInput,
+): ProductVariantUpdatePayload {
+  return {
+    product_id: productId,
+    sku: normalizeSku(input.sku),
+    size_name: input.size_name.trim(),
+    colour_name: input.colour_name.trim(),
+    price_pesewas: input.price_pesewas,
+    low_stock_threshold: input.low_stock_threshold,
+  }
+}
+
+async function withDemoCatalog<T>(
+  run: (demo: typeof import('./demo-product-store.ts')) => T | Promise<T>,
+): Promise<T> {
+  if (!__POS_DEV_E2E_ASSIST__) {
+    throw new Error(CATALOG_UNAVAILABLE)
+  }
+  const demo = await import('./demo-product-store.ts')
+  return run(demo)
+}
+
+function requireSupabaseClient() {
+  if (!isSupabaseConfigured()) {
+    throw new Error(CATALOG_UNAVAILABLE)
+  }
+  const client = browserSupabase()
+  if (!client) {
+    throw new Error(CATALOG_UNAVAILABLE)
+  }
+  return client
 }
 
 function rowToProduct(row: Record<string, unknown>, variants: ProductVariantRow[]): ProductWithVariants {
@@ -51,10 +97,11 @@ export async function fetchProductList(filters: {
   category: string
   includeArchived: boolean
 }): Promise<ProductWithVariants[]> {
-  if (shouldUseDemoCatalog()) return demoListProducts(filters)
+  if (__POS_DEV_E2E_ASSIST__) {
+    return withDemoCatalog((demo) => demo.demoListProducts(filters))
+  }
 
-  const client = browserSupabase()
-  if (!client) return demoListProducts(filters)
+  const client = requireSupabaseClient()
 
   let query = client
     .from('products')
@@ -85,10 +132,11 @@ export async function fetchProductList(filters: {
 }
 
 export async function fetchProductById(productId: string): Promise<ProductWithVariants | null> {
-  if (shouldUseDemoCatalog()) return demoGetProduct(productId)
+  if (__POS_DEV_E2E_ASSIST__) {
+    return withDemoCatalog((demo) => demo.demoGetProduct(productId))
+  }
 
-  const client = browserSupabase()
-  if (!client) return demoGetProduct(productId)
+  const client = requireSupabaseClient()
 
   const { data, error } = await client
     .from('products')
@@ -102,9 +150,11 @@ export async function fetchProductById(productId: string): Promise<ProductWithVa
 }
 
 export async function createProduct(input: ProductInput): Promise<ProductWithVariants> {
-  if (shouldUseDemoCatalog()) return demoCreateProduct(input)
-  const client = browserSupabase()
-  if (!client) return demoCreateProduct(input)
+  if (__POS_DEV_E2E_ASSIST__) {
+    return withDemoCatalog((demo) => demo.demoCreateProduct(input))
+  }
+
+  const client = requireSupabaseClient()
 
   const { data, error } = await client
     .from('products')
@@ -121,9 +171,11 @@ export async function createProduct(input: ProductInput): Promise<ProductWithVar
 }
 
 export async function updateProduct(productId: string, input: ProductInput): Promise<ProductWithVariants> {
-  if (shouldUseDemoCatalog()) return demoUpdateProduct(productId, input)
-  const client = browserSupabase()
-  if (!client) return demoUpdateProduct(productId, input)
+  if (__POS_DEV_E2E_ASSIST__) {
+    return withDemoCatalog((demo) => demo.demoUpdateProduct(productId, input))
+  }
+
+  const client = requireSupabaseClient()
 
   const { data, error } = await client
     .from('products')
@@ -141,23 +193,39 @@ export async function updateProduct(productId: string, input: ProductInput): Pro
 }
 
 export async function setProductActive(productId: string, active: boolean): Promise<ProductWithVariants> {
-  if (shouldUseDemoCatalog()) return demoSetProductActive(productId, active)
-  const client = browserSupabase()
-  if (!client) return demoSetProductActive(productId, active)
+  if (__POS_DEV_E2E_ASSIST__) {
+    return withDemoCatalog((demo) => demo.demoSetProductActive(productId, active))
+  }
 
-  const { data, error } = await client.from('products').update({ active }).eq('id', productId).select('*, product_variants(*)').single()
+  const client = requireSupabaseClient()
+
+  const { data, error } = await client
+    .from('products')
+    .update({ active })
+    .eq('id', productId)
+    .select('*, product_variants(*)')
+    .single()
   if (error) throw new Error(error.message)
   const variantRows = Array.isArray(data.product_variants) ? data.product_variants : []
   return rowToProduct(data, variantRows.map((variant) => mapVariant(variant as Record<string, unknown>)))
 }
 
 export function friendlyProductError(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
-    return 'That SKU is already in use. Pick another one.'
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = String(error.code)
+    if (code === '23505') {
+      return 'That SKU is already in use. Pick another one.'
+    }
+    if (code === '42501') {
+      return 'You do not have permission to change this variant. Ask a manager.'
+    }
   }
   const message = error instanceof Error ? error.message : String(error)
   if (message.includes('23505') || message.toLowerCase().includes('duplicate')) {
     return 'That SKU is already in use. Pick another one.'
+  }
+  if (message.includes('42501')) {
+    return 'You do not have permission to change this variant. Ask a manager.'
   }
   return message || 'Something went wrong. Please try again.'
 }
@@ -168,29 +236,29 @@ export async function upsertProductVariant(
   input: VariantInput,
 ): Promise<ProductVariantRow> {
   try {
-    if (shouldUseDemoCatalog()) return demoUpsertVariant(productId, variantId, input)
-    const client = browserSupabase()
-    if (!client) return demoUpsertVariant(productId, variantId, input)
-
-    const payload = {
-      product_id: productId,
-      sku: input.sku.trim(),
-      size_name: input.size_name.trim(),
-      colour_name: input.colour_name.trim(),
-      price_pesewas: input.price_pesewas,
-      low_stock_threshold: input.low_stock_threshold,
+    if (__POS_DEV_E2E_ASSIST__) {
+      return withDemoCatalog((demo) => demo.demoUpsertVariant(productId, variantId, input))
     }
 
+    const client = requireSupabaseClient()
+    const updatePayload = buildProductVariantUpdatePayload(productId, input)
+
     if (variantId) {
-      const { data, error } = await client.from('product_variants').update(payload).eq('id', variantId).select('*').single()
+      const { data, error } = await client
+        .from('product_variants')
+        .update(updatePayload)
+        .eq('id', variantId)
+        .select('*')
+        .single()
       if (error) throw error
       return mapVariant(data)
     }
-    const { data, error } = await client
-      .from('product_variants')
-      .insert({ ...payload, stock_qty: 0 })
-      .select('*')
-      .single()
+
+    const insertPayload = {
+      ...updatePayload,
+      stock_qty: 0,
+    }
+    const { data, error } = await client.from('product_variants').insert(insertPayload).select('*').single()
     if (error) throw error
     return mapVariant(data)
   } catch (error) {

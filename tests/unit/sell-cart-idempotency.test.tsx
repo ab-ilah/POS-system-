@@ -396,7 +396,7 @@ describe('useSellCart idempotency with checkoutCart clones', () => {
     second.root.unmount()
   })
 
-  it('keeps the sale id when qty changes after accepting a P0003 refresh', async () => {
+  it('mints a new sale id when qty changes after accepting a P0003 refresh', async () => {
     const newPrice = shelfPriceFromCedis(49, 0)
     vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(
       new Map([['demo-tee-m-white', newPrice]]),
@@ -440,7 +440,136 @@ describe('useSellCart idempotency with checkoutCart clones', () => {
     })
 
     const idAfterQty = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}price-mint`) ?? '{}').id as string
-    expect(idAfterQty).toBe(saleId)
+    expect(idAfterQty).not.toBe(saleId)
+    root.unmount()
+  })
+
+  it('mints a new sale id when adding a line after a failed checkout attempt', async () => {
+    const client: CommitSaleClient = {
+      async commitSale() {
+        throw new CommitSaleRpcError({ code: 'PSTCK', message: 'insufficient stock', hint: 'Basic cotton tee' })
+      },
+    }
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockImplementation((cart, role) =>
+      checkoutCart(cart, client, role),
+    )
+
+    const { container, root } = mountHarness('pstck-add')
+    await addDemoLine(container)
+    const saleId = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}pstck-add`) ?? '{}').id as string
+
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+
+    await addDemoLine(container)
+    const idAfterAdd = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}pstck-add`) ?? '{}').id as string
+    expect(idAfterAdd).not.toBe(saleId)
+    root.unmount()
+  })
+
+  it('mints a new sale id when decreasing qty to remove a line after checkout failure', async () => {
+    const client: CommitSaleClient = {
+      async commitSale() {
+        throw new CommitSaleRpcError({ code: 'P0004', message: 'payload drift' })
+      },
+    }
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockImplementation((cart, role) =>
+      checkoutCart(cart, client, role),
+    )
+
+    const { container, root } = mountHarness('remove-line')
+    await addDemoLine(container)
+    const saleId = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}remove-line`) ?? '{}').id as string
+
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+
+    const decrease = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.getAttribute('aria-label')?.startsWith('Decrease'),
+    )
+    await act(async () => {
+      decrease?.click()
+    })
+
+    const idAfter = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}remove-line`) ?? '{}').id as string
+    expect(idAfter).not.toBe(saleId)
+    root.unmount()
+  })
+
+  it('restores P0003 price_confirm after remount with the same sale id', async () => {
+    const newPrice = shelfPriceFromCedis(49, 0)
+    vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(
+      new Map([['demo-tee-m-white', newPrice]]),
+    )
+    const client: CommitSaleClient = {
+      async commitSale() {
+        throw new CommitSaleRpcError({
+          code: 'P0003',
+          message: 'unit price does not match shelf price',
+          details: 'variant_id=demo-tee-m-white',
+        })
+      },
+    }
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockImplementation((cart, role) =>
+      checkoutCart(cart, client, role),
+    )
+
+    const first = mountHarness('price-remount')
+    await addDemoLine(first.container)
+    const saleId = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}price-remount`) ?? '{}').id as string
+
+    const pay = Array.from(first.container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(first.container.textContent).toMatch(/New total:/i)
+
+    first.root.unmount()
+
+    const second = mountHarness('price-remount')
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(second.container.textContent).toMatch(/shelf price changed/i)
+    expect(JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}price-remount`) ?? '{}').id).toBe(saleId)
+    second.root.unmount()
+  })
+
+  it('warns when shelf refresh returns no price for a variant', async () => {
+    vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(new Map())
+
+    const client: CommitSaleClient = {
+      async commitSale() {
+        throw new CommitSaleRpcError({
+          code: 'P0003',
+          message: 'unit price does not match shelf price',
+          details: 'variant_id=demo-tee-m-white',
+        })
+      },
+    }
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockImplementation((cart, role) =>
+      checkoutCart(cart, client, role),
+    )
+
+    const { container, root } = mountHarness('missing-price')
+    await addDemoLine(container)
+
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toMatch(/Could not load a shelf price/i)
     root.unmount()
   })
 })

@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useStaffRole } from '@/app/use-staff-session.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Card } from '@/components/ui/card.tsx'
 import { LowStockBadge } from '@/features/products/LowStockBadge.tsx'
-import { fetchProductById, PRODUCTS_QUERY_KEY, setProductActive } from '@/lib/data/products.ts'
+import { fetchProductById, friendlyProductError, PRODUCTS_QUERY_KEY, setProductActive } from '@/lib/data/products.ts'
 import { canManageProducts } from '@/lib/route-access.ts'
 import { categoryLabel, formatVariantLabel, isLowStock } from '@/lib/products/types.ts'
 import { formatGhs } from '@/lib/money.ts'
@@ -22,11 +23,15 @@ export function ProductDetailScreen() {
     enabled: productId.length > 0,
   })
 
+  const [archiveError, setArchiveError] = useState<string | null>(null)
+
   const archiveMutation = useMutation({
     mutationFn: (active: boolean) => setProductActive(productId, active),
     onSuccess: () => {
+      setArchiveError(null)
       void queryClient.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY })
     },
+    onError: (error) => setArchiveError(friendlyProductError(error)),
   })
 
   if (query.isLoading) {
@@ -86,6 +91,12 @@ export function ProductDetailScreen() {
           </div>
         ) : null}
       </div>
+
+      {archiveError ? (
+        <p className="text-sm text-destructive" role="alert">
+          {archiveError}
+        </p>
+      ) : null}
 
       {product.description ? <p className="text-sm leading-relaxed text-muted-foreground">{product.description}</p> : null}
 

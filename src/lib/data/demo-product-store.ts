@@ -1,4 +1,5 @@
 import { pesewas, shelfPriceFromCedis } from '@/lib/money.ts'
+import { normalizeSku } from '@/lib/products/sku.ts'
 import type {
   ProductInput,
   ProductRow,
@@ -150,7 +151,7 @@ export function demoSetProductActive(productId: string, active: boolean): Produc
 
 export function demoUpsertVariant(productId: string, variantId: string | null, input: VariantInput): ProductVariantRow {
   if (!products.some((row) => row.id === productId)) throw new Error('Product not found')
-  const sku = input.sku.trim().toUpperCase()
+  const sku = normalizeSku(input.sku)
   const duplicate = variants.find(
     (row) => row.sku.toLowerCase() === sku.toLowerCase() && row.id !== (variantId ?? ''),
   )
