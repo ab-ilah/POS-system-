@@ -7,6 +7,9 @@ describe('resolveDevE2eStaffSession', () => {
   })
 
   it('allows a dev-only staff role when not in production', () => {
-    expect(resolveDevE2eStaffSession({ production: false, roleRaw: 'cashier' })).toEqual({ role: 'cashier' })
+    expect(resolveDevE2eStaffSession({ production: false, roleRaw: 'cashier' })).toEqual({
+      role: 'cashier',
+      userId: 'e2e-staff-user',
+    })
   })
 })

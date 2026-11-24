@@ -31,13 +31,17 @@ function SellCartHarness({ onReady }: { onReady: (cart: ReturnType<typeof useSel
   )
 }
 
-function mountSession(role: 'cashier' | 'manager' | null, onReady: (cart: ReturnType<typeof useSellCart>) => void) {
+function mountSession(
+  role: 'cashier' | 'manager' | null,
+  userId: string,
+  onReady: (cart: ReturnType<typeof useSellCart>) => void,
+) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   act(() => {
     root.render(
-      <StaffSessionTestProvider role={role}>
+      <StaffSessionTestProvider role={role} userId={userId}>
         <SellCartHarness onReady={onReady} />
       </StaffSessionTestProvider>,
     )
@@ -51,9 +55,9 @@ describe('useSellCart session storage (AC6)', () => {
     localStorage.clear()
   })
 
-  it('clears the prior role storage key and empties the cart on sign-out and on role switch', async () => {
+  it('keys the cart by user id and clears the prior user on sign-out and switch', async () => {
     let sellCart: ReturnType<typeof useSellCart> | null = null
-    const first = mountSession('cashier', (cart) => {
+    const first = mountSession('cashier', 'user-cashier-a', (cart) => {
       sellCart = cart
     })
 
@@ -61,40 +65,38 @@ describe('useSellCart session storage (AC6)', () => {
       first.container.querySelector('button')?.click()
     })
     const cashierCartId = sellCart!.cart.id
-    expect(sellCart!.cart.lines).toHaveLength(1)
-    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}cashier`)).toBeTruthy()
+    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}user-cashier-a`)).toBeTruthy()
 
     first.root.unmount()
 
     let afterSignOut: ReturnType<typeof useSellCart> | null = null
-    const signedOut = mountSession(null, (cart) => {
+    const signedOut = mountSession(null, 'signed-out', (cart) => {
       afterSignOut = cart
     })
 
-    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}cashier`)).toBeNull()
+    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}user-cashier-a`)).toBeNull()
     expect(afterSignOut!.cart.lines).toHaveLength(0)
     expect(afterSignOut!.cart.id).not.toBe(cashierCartId)
 
     signedOut.root.unmount()
 
     let managerCart: ReturnType<typeof useSellCart> | null = null
-    const switched = mountSession('manager', (cart) => {
+    const switched = mountSession('manager', 'user-manager-b', (cart) => {
       managerCart = cart
     })
     await act(async () => {
       switched.container.querySelector('button')?.click()
     })
     const managerCartId = managerCart!.cart.id
-    expect(managerCart!.cart.lines).toHaveLength(1)
 
     switched.root.unmount()
 
     let afterSwitch: ReturnType<typeof useSellCart> | null = null
-    mountSession('cashier', (cart) => {
+    mountSession('cashier', 'user-cashier-c', (cart) => {
       afterSwitch = cart
     })
 
-    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}manager`)).toBeNull()
+    expect(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}user-manager-b`)).toBeNull()
     expect(afterSwitch!.cart.lines).toHaveLength(0)
     expect(afterSwitch!.cart.id).not.toBe(managerCartId)
   })

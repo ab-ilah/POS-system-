@@ -2,7 +2,7 @@ import { CommitSaleTimeoutError } from './data/commit-sale-call.ts'
 import { CommitSaleRpcError, isCommitSaleRpcError } from './data/commit-sale-rpc-error.ts'
 import { EMPTY_ERROR_FALLBACK } from './user-message.ts'
 
-export type CommitSaleFailureCode = 'P0004' | 'P0005' | 'PSTCK' | 'P0002' | 'generic'
+export type CommitSaleFailureCode = 'P0004' | 'P0005' | 'PSTCK' | 'P0002' | 'P0003' | 'generic'
 
 export type MappedCommitSaleFailure = {
   code: CommitSaleFailureCode
@@ -26,6 +26,8 @@ const UNKNOWN_ITEM =
   'That item is no longer on the catalogue. Remove it from the cart and try again.'
 const UNKNOWN_STORE =
   'This shop is not recognised. Sign out and sign in again, or ask a manager.'
+const PRICE_CHANGED =
+  'The shelf price changed. Review the updated total before taking payment again.'
 
 function normaliseSqlState(code: string): string {
   return code.trim().toUpperCase()
@@ -35,7 +37,7 @@ function normaliseMessage(message: string): string {
   return message.trim().toLowerCase()
 }
 
-function variantIdFromDetails(details: string | undefined): string | null {
+export function variantIdFromCommitSaleDetails(details: string | undefined): string | null {
   if (!details) return null
   const match = details.match(/variant_id\s*[=:]\s*(\S+)/i)
   return match?.[1] ?? null
@@ -46,7 +48,7 @@ function stockItemLabel(
   context?: { lineLabelByVariantId?: ReadonlyMap<string, string> },
 ): string | null {
   if (error.hint) return error.hint
-  const variantId = variantIdFromDetails(error.details)
+  const variantId = variantIdFromCommitSaleDetails(error.details)
   if (variantId && context?.lineLabelByVariantId) {
     return context.lineLabelByVariantId.get(variantId) ?? null
   }
@@ -69,8 +71,8 @@ function mapP0004(error: CommitSaleRpcError): MappedCommitSaleFailure {
     return {
       code: 'P0004',
       userMessage: IDEMPOTENCY_KEY_REUSE,
-      regenerateLineIds: true,
-      assignNewSaleId: true,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
     }
   }
   // Backend: same migration (invalid sale line, empty sale, and other P0004 cases)
@@ -156,6 +158,15 @@ export function mapCommitSaleFailure(
 
   if (sqlState === 'P0002') {
     return mapP0002(error)
+  }
+
+  if (sqlState === 'P0003') {
+    return {
+      code: 'P0003',
+      userMessage: PRICE_CHANGED,
+      regenerateLineIds: false,
+      assignNewSaleId: false,
+    }
   }
 
   if (sqlState === 'PSTCK') {

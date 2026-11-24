@@ -1,4 +1,4 @@
-import { lineTotal, sumPesewas, type Pesewas } from './money.ts'
+import { lineTotal, pesewas, sumPesewas, type Pesewas } from './money.ts'
 import type { SaleId, SaleLineId, StoreId, VariantId } from '../types/index.ts'
 
 export type CartLine = {
@@ -91,22 +91,42 @@ export function setCartLineQuantity(cart: Cart, lineId: SaleLineId, quantity: nu
   }
 }
 
+export function updateCartLineShelfPrices(cart: Cart, prices: ReadonlyMap<string, Pesewas>): Cart {
+  return {
+    ...cart,
+    lines: cart.lines.map((line) => {
+      const nextPrice = prices.get(line.variantId)
+      return nextPrice != null ? { ...line, unitPricePesewas: pesewas(nextPrice) } : line
+    }),
+  }
+}
+
 export function changeCartLineQuantity(cart: Cart, lineId: SaleLineId, delta: number): Cart {
   const line = cart.lines.find((entry) => entry.id === lineId)
   if (!line) return cart
   return setCartLineQuantity(cart, lineId, line.quantity + delta)
 }
 
+export function cartsEqual(left: Cart, right: Cart): boolean {
+  if (left.id !== right.id || left.storeId !== right.storeId || left.lines.length !== right.lines.length) {
+    return false
+  }
+  return left.lines.every((line, index) => {
+    const other = right.lines[index]
+    return (
+      other != null &&
+      line.id === other.id &&
+      line.variantId === other.variantId &&
+      line.quantity === other.quantity &&
+      line.unitPricePesewas === other.unitPricePesewas &&
+      line.label === other.label
+    )
+  })
+}
+
 /** After any deliberate line edit following a commit attempt, mint a fresh sale id (PR #14 / POS-02e). */
 export function cartAfterLineEdit(cart: Cart, next: Cart): Cart {
-  if (next.lines === cart.lines && next.lines.length === cart.lines.length) {
-    const same =
-      next.lines.every((line, index) => {
-        const prior = cart.lines[index]
-        return prior && prior.id === line.id && prior.quantity === line.quantity && prior.variantId === line.variantId
-      })
-    if (same) return next
-  }
+  if (cartsEqual(cart, next)) return next
   if (next.id === cart.id) {
     return { ...next, id: crypto.randomUUID() }
   }

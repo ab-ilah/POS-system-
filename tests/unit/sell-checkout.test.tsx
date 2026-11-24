@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StaffSessionTestProvider } from '../../src/app/staff-session.tsx'
@@ -26,9 +27,11 @@ function mount(ui: ReactNode): { container: HTMLDivElement; root: Root } {
   const root = createRoot(container)
   act(() => {
     root.render(
-      <StaffSessionTestProvider role="cashier">
-        <MemoryRouter>{ui}</MemoryRouter>
-      </StaffSessionTestProvider>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <StaffSessionTestProvider role="cashier" userId="checkout-test-user">
+          <MemoryRouter>{ui}</MemoryRouter>
+        </StaffSessionTestProvider>
+      </QueryClientProvider>,
     )
   })
   return { container, root }
@@ -74,6 +77,28 @@ describe('SellCheckoutPanel states', () => {
     )
     expect(payLabels).toHaveLength(1)
     expect(container.textContent).not.toMatch(/tender|split payment/i)
+    root.unmount()
+  })
+
+  it('shows voided replay with the server total', async () => {
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockResolvedValue({
+      ok: true,
+      saleId: 'sale-1',
+      replayed: true,
+      status: 'voided',
+      totalPesewas: pesewas(12345),
+    })
+
+    const { container, root } = mount(<Harness />)
+    await addDemoLine(container)
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toMatch(/Sale already recorded/)
+    expect(container.textContent).toMatch(/GH₵123\.45/)
     root.unmount()
   })
 
@@ -156,7 +181,7 @@ describe('SellCheckoutPanel states', () => {
 
     const { container, root } = mount(<Harness />)
     await addDemoLine(container)
-    const saleIdBeforePay = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const saleIdBeforePay = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
 
     const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
     await act(async () => {
@@ -255,7 +280,7 @@ describe('SellCheckoutPanel states', () => {
       await Promise.resolve()
     })
 
-    const conflictId = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const conflictId = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(conflictId).toBe('sale-conflict-1')
 
     const ring = Array.from(container.querySelectorAll('button')).find((button) =>
@@ -272,7 +297,7 @@ describe('SellCheckoutPanel states', () => {
     await act(async () => {
       cancel?.click()
     })
-    const idAfterCancel = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const idAfterCancel = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(idAfterCancel).toBe(conflictId)
 
     await act(async () => {
@@ -284,7 +309,7 @@ describe('SellCheckoutPanel states', () => {
     await act(async () => {
       confirm?.click()
     })
-    const idAfterConfirm = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const idAfterConfirm = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(idAfterConfirm).not.toBe(conflictId)
 
     root.unmount()

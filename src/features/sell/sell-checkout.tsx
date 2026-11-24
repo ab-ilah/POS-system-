@@ -10,6 +10,7 @@ import type { CheckoutResult } from '@/lib/checkout.ts'
 import { formatGhs, lineTotal } from '@/lib/money.ts'
 import { taxBreakdownFromGross } from '@/lib/tax.ts'
 import { DEMO_VARIANTS } from '@/features/sell/demo-catalog.ts'
+import { useShelfPriceRefresh } from '@/features/sell/use-shelf-price-refresh.ts'
 import type { useSellCart } from '@/features/sell/use-sell-cart.ts'
 import type { Pesewas } from '@/lib/money.ts'
 
@@ -23,6 +24,7 @@ export type CheckoutPhase =
   | 'conflict'
   | 'unconfirmed'
   | 'network'
+  | 'price_confirm'
 
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
@@ -134,12 +136,25 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successTotal, setSuccessTotal] = useState<Pesewas | null>(null)
   const [ringNewOpen, setRingNewOpen] = useState(false)
+  const [priceChangeConfirmed, setPriceChangeConfirmed] = useState(false)
   const checkoutInFlight = useRef(false)
-  const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, setCart } = sellCart
+  const { refreshCartShelfPrices } = useShelfPriceRefresh()
+  const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } = sellCart
 
-  const locked = phase === 'committing' || phase === 'unconfirmed' || phase === 'network'
+  const priceChangeAwaitingConfirm = phase === 'price_confirm' && !priceChangeConfirmed
+  const locked =
+    phase === 'committing' ||
+    phase === 'unconfirmed' ||
+    phase === 'network' ||
+    phase === 'conflict' ||
+    priceChangeAwaitingConfirm
   const payDisabled =
-    cart.lines.length === 0 || !online || phase === 'committing' || locked || phase === 'success' || phase === 'voided'
+    cart.lines.length === 0 ||
+    !online ||
+    phase === 'committing' ||
+    locked ||
+    phase === 'success' ||
+    phase === 'voided'
 
   const handleCheckoutResult = useCallback(
     (result: CheckoutResult) => {
@@ -156,13 +171,26 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       if (result.kind === 'unconfirmed') {
         setPhase('unconfirmed')
         setErrorMessage(result.userMessage)
-        setCart(result.cart)
+        replaceCart(result.cart)
         return
       }
-      setCart(result.cart)
+      replaceCart(result.cart)
       if (result.idempotencyReuse) {
         setErrorMessage(result.userMessage)
         setPhase('conflict')
+        return
+      }
+      if (result.code === 'P0003') {
+        setPriceChangeConfirmed(false)
+        setPhase('price_confirm')
+        setErrorMessage(result.userMessage)
+        replaceCart(result.cart)
+        void refreshCartShelfPrices(result.cart, result.priceChangeVariantIds ?? []).then((refreshed) => {
+          replaceCart(refreshed)
+          setErrorMessage(
+            `${result.userMessage} New total: ${formatGhs(cartGrossPesewas(refreshed))}.`,
+          )
+        })
         return
       }
       if (result.code === 'generic') {
@@ -173,7 +201,7 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       setPhase('editing')
       setErrorMessage(result.userMessage)
     },
-    [setCart],
+    [refreshCartShelfPrices, replaceCart],
   )
 
   const executeCheckout = useCallback(
@@ -237,6 +265,9 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
     return (
       <StatusBanner tone="info">
         <p className="text-base font-semibold">Sale already recorded</p>
+        {successTotal != null ? (
+          <p className="mt-1 text-xl font-bold tabular-nums">{formatGhs(successTotal)}</p>
+        ) : null}
         <Button
           type="button"
           className="mt-4 min-h-11 w-full"
@@ -275,7 +306,18 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       <div aria-live="assertive" aria-atomic="true" id={totalsId}>
         {errorMessage && phase !== 'conflict' ? (
           <StatusBanner tone="danger" actions={
-            phase === 'unconfirmed' ? (
+            phase === 'price_confirm' ? (
+              <Button
+                type="button"
+                className="min-h-11"
+                onClick={() => {
+                  setPriceChangeConfirmed(true)
+                  setPhase('editing')
+                }}
+              >
+                Accept new price
+              </Button>
+            ) : phase === 'unconfirmed' ? (
               <>
                 <Button type="button" variant="outline" asChild className="min-h-11">
                   <Link to="/sales">Open Sales</Link>
