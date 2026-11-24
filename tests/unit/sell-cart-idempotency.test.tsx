@@ -396,7 +396,7 @@ describe('useSellCart idempotency with checkoutCart clones', () => {
     second.root.unmount()
   })
 
-  it('mints a new sale id when qty changes after accepting a P0003 refresh', async () => {
+  it('keeps the sale id when qty changes after accepting a P0003 refresh', async () => {
     const newPrice = shelfPriceFromCedis(49, 0)
     vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(
       new Map([['demo-tee-m-white', newPrice]]),
@@ -440,7 +440,7 @@ describe('useSellCart idempotency with checkoutCart clones', () => {
     })
 
     const idAfterQty = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}price-mint`) ?? '{}').id as string
-    expect(idAfterQty).not.toBe(saleId)
+    expect(idAfterQty).toBe(saleId)
     root.unmount()
   })
 })

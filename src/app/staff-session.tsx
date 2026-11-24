@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Role } from '@/shared/permissions.matrix.ts'
 import { roleFromAppMetadata } from '@/lib/permissions.ts'
+import { readE2eAssistRole } from '@/features/e2e/E2eAssistScreen.tsx'
 import { browserSessionReader, type StaffSession } from '@/lib/data/session.ts'
 import { StaffSessionContext, type StaffSessionState } from '@/app/staff-session-context.ts'
 
@@ -26,6 +27,11 @@ export function StaffSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StaffSessionState>({ ready: false, session: null })
 
   useEffect(() => {
+    const e2eAssist = readE2eAssistRole()
+    if (e2eAssist) {
+      setState({ ready: true, session: { role: e2eAssist, userId: `e2e-${e2eAssist}` } })
+      return
+    }
     const e2e = e2eStaffSession()
     if (e2e) {
       setState({ ready: true, session: e2e })

@@ -349,6 +349,10 @@ describe('SellCheckoutPanel states', () => {
       await Promise.resolve()
     })
     expect(container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+    const quickAddConflict = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Basic cotton tee'),
+    )
+    expect(quickAddConflict?.hasAttribute('disabled')).toBe(true)
 
     root.unmount()
     vi.restoreAllMocks()
@@ -390,6 +394,10 @@ describe('SellCheckoutPanel states', () => {
       await Promise.resolve()
     })
     expect(priceUi.container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+    const quickAddPrice = Array.from(priceUi.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Basic cotton tee'),
+    )
+    expect(quickAddPrice?.hasAttribute('disabled')).toBe(true)
     priceUi.root.unmount()
   })
 

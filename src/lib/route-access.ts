@@ -1,6 +1,10 @@
 import { canExecuteCommitSale, isAllowed } from '@/lib/permissions.ts'
 import type { Operation, Role, TableName } from '@/shared/permissions.matrix.ts'
 
+export function canManageProducts(role: Role): boolean {
+  return isAllowed(role, 'products', 'insert')
+}
+
 export type RouteTablePermission = { table: TableName; operation: Operation }
 export type RouteRpcPermission = { rpc: 'commit_sale' }
 export type RoutePermission = RouteTablePermission | RouteRpcPermission
@@ -15,7 +19,7 @@ export type AppRoute = {
 export const APP_ROUTES: readonly AppRoute[] = [
   { path: '/sell', label: 'Sell', requiresAll: [{ rpc: 'commit_sale' }] },
   { path: '/sales', label: 'Sales', requiresAll: [{ table: 'sales', operation: 'update' }] },
-  { path: '/products', label: 'Products', requiresAll: [{ table: 'products', operation: 'insert' }] },
+  { path: '/products', label: 'Products', requiresAll: [{ table: 'products', operation: 'select' }] },
   {
     path: '/stock',
     label: 'Stock',
@@ -40,8 +44,22 @@ export function normalizeAppPath(pathname: string): string {
   return pathname
 }
 
+function productSubRoute(path: string): AppRoute | undefined {
+  if (path === '/products/new') {
+    return { path, label: 'Products', requiresAll: [{ table: 'products', operation: 'insert' }] }
+  }
+  if (/^\/products\/[^/]+\/edit$/.test(path)) {
+    return { path, label: 'Products', requiresAll: [{ table: 'products', operation: 'update' }] }
+  }
+  if (/^\/products\/[^/]+$/.test(path) && path !== '/products/new') {
+    return { path, label: 'Products', requiresAll: [{ table: 'products', operation: 'select' }] }
+  }
+  return undefined
+}
+
 export function routeForPath(pathname: string): AppRoute | undefined {
-  return appRouteByPath.get(normalizeAppPath(pathname))
+  const path = normalizeAppPath(pathname)
+  return appRouteByPath.get(path) ?? productSubRoute(path)
 }
 
 function meetsRouteRequirement(role: Role, requirement: RoutePermission): boolean {

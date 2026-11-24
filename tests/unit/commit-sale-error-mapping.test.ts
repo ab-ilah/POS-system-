@@ -95,7 +95,7 @@ describe('mapCommitSaleFailure', () => {
 
   it('maps unknown P0004 messages to the replay-mismatch fallback', () => {
     const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'payload drift' }))
-    expect(mapped.userMessage).toMatch(/conflicts with an earlier one/i)
+    expect(mapped.userMessage).toMatch(/Edit the cart/i)
     expect(mapped.assignNewSaleId).toBe(false)
   })
 

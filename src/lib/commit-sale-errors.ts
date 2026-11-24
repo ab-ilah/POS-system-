@@ -14,7 +14,7 @@ export type MappedCommitSaleFailure = {
 }
 
 const REPLAY_MISMATCH =
-  'This sale conflicts with an earlier one. Refresh the till and try again.'
+  'This sale conflicts with an earlier one. Edit the cart, then try payment again.'
 const IDEMPOTENCY_KEY_REUSE =
   'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.'
 const INVALID_SALE_LINE =

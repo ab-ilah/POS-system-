@@ -21,9 +21,17 @@ export type CommitSaleRpcResult = {
   total_pesewas?: Pesewas
 }
 
+export type ProductCategoryDb =
+  | 'shirts'
+  | 'dresses'
+  | 'kaftans'
+  | 'jeans'
+  | 'shoes'
+  | 'accessories'
+
 type TableDef<Row extends Record<string, unknown>> = {
   Row: Row
-  Insert: Row
+  Insert: Partial<Row>
   Update: Partial<Row>
   Relationships: []
 }
@@ -31,6 +39,28 @@ type TableDef<Row extends Record<string, unknown>> = {
 export type Database = {
   public: {
     Tables: {
+      products: TableDef<{
+        id: string
+        name: string
+        category: ProductCategoryDb
+        description: string | null
+        image_path: string | null
+        active: boolean
+        created_at: string
+        updated_at: string
+      }>
+      product_variants: TableDef<{
+        id: string
+        product_id: string
+        sku: string
+        size_name: string
+        colour_name: string
+        price_pesewas: Pesewas
+        stock_qty: number
+        low_stock_threshold: number
+        created_at: string
+        updated_at: string
+      }>
       sales: TableDef<{
         id: string
         store_id: string
@@ -42,10 +72,6 @@ export type Database = {
         variant_id: string
         quantity: DbInteger
         unit_price_pesewas: Pesewas
-      }>
-      product_variants: TableDef<{
-        id: string
-        price_pesewas: Pesewas
       }>
     }
     Views: {

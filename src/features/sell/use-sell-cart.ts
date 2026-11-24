@@ -101,6 +101,7 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
 
   const changeQuantity = useCallback(
     (lineId: string, delta: number) => {
+      hadCommitAttempt.current = false
       updateCart((previous) => changeCartLineQuantity(previous, lineId, delta))
     },
     [updateCart],
