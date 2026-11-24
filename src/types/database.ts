@@ -12,9 +12,13 @@ export type CommitSaleLineRecord = {
   unit_price_pesewas: Pesewas
 }
 
+export type CommitSaleStatus = 'completed' | 'voided'
+
 export type CommitSaleRpcResult = {
   sale_id: string
   replayed: boolean
+  status?: CommitSaleStatus | string
+  total_pesewas?: Pesewas
 }
 
 type TableDef<Row extends Record<string, unknown>> = {

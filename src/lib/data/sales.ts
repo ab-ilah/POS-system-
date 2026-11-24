@@ -45,9 +45,13 @@ export type CommitSaleArgs = {
   }[]
 }
 
+import type { CommitSaleStatus } from '../../types/database.ts'
+
 export type CommitSaleResult = {
   saleId: string
   replayed: boolean
+  status: CommitSaleStatus | 'unknown'
+  totalPesewas: Pesewas | null
 }
 
 export type CommitSaleClient = {

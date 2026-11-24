@@ -54,7 +54,12 @@ describe('createCommitSaleClient timeout', () => {
               })
             }
             return Promise.resolve({
-              data: { sale_id: args.p_idempotency_key, replayed: true },
+              data: {
+                sale_id: args.p_idempotency_key,
+                replayed: true,
+                status: 'completed',
+                total_pesewas: 100,
+              },
               error: null,
             })
           },
@@ -64,7 +69,7 @@ describe('createCommitSaleClient timeout', () => {
 
     const client = createCommitSaleClient(supabase as unknown as TypedSupabaseClient, { timeoutMs: 20 })
     const result = await client.commitSale(saleArgs)
-    expect(result).toEqual({ saleId: 'sale-1', replayed: true })
+    expect(result).toMatchObject({ saleId: 'sale-1', replayed: true, status: 'completed', totalPesewas: 100 })
     expect(keys).toEqual(['sale-1', 'sale-1'])
   })
 })

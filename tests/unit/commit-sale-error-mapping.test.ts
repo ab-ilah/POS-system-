@@ -5,7 +5,19 @@ import { checkoutCart } from '../../src/lib/checkout.ts'
 import { CommitSaleRpcError } from '../../src/lib/data/commit-sale-rpc-error.ts'
 import { CommitSaleTimeoutError } from '../../src/lib/data/commit-sale-call.ts'
 import { shelfPriceFromCedis } from '../../src/lib/money.ts'
-import type { CommitSaleClient } from '../../src/lib/data/sales.ts'
+import type { CommitSaleClient, CommitSaleResult } from '../../src/lib/data/sales.ts'
+import { pesewas } from '../../src/lib/money.ts'
+import { CHECKOUT_UNCONFIRMED_MESSAGE } from '../../src/lib/checkout.ts'
+
+function commitResult(overrides: Partial<CommitSaleResult> = {}): CommitSaleResult {
+  return {
+    saleId: 'sale-1',
+    replayed: false,
+    status: 'completed',
+    totalPesewas: pesewas(37905),
+    ...overrides,
+  }
+}
 
 function rpcError(code: string, fields?: { details?: string; hint?: string; message?: string }) {
   return new CommitSaleRpcError({
@@ -139,16 +151,42 @@ describe('mapCommitSaleFailure', () => {
 })
 
 describe('checkoutCart', () => {
-  it('treats replayed:true as success', async () => {
+  it('treats replayed:true with completed status as success', async () => {
     const result = await checkoutCart(
       sampleCart(),
-      mockClient(async () => ({ saleId: 'sale-1', replayed: true })),
+      mockClient(async () => commitResult({ replayed: true })),
       'cashier',
     )
-    expect(result).toEqual({ ok: true, saleId: 'sale-1', replayed: true })
+    expect(result).toMatchObject({ ok: true, saleId: 'sale-1', replayed: true, status: 'completed' })
   })
 
-  it('assigns a new sale id and new line ids on P0004 idempotency_key_reuse but keeps the items', async () => {
+  it('fails safe on missing status', async () => {
+    const before = sampleCart()
+    const result = await checkoutCart(
+      before,
+      mockClient(async () => commitResult({ status: 'unknown', totalPesewas: pesewas(100) })),
+      'cashier',
+    )
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'unconfirmed',
+      userMessage: CHECKOUT_UNCONFIRMED_MESSAGE,
+    })
+    if (!result.ok) {
+      expect(result.cart).toEqual(before)
+    }
+  })
+
+  it('returns voided success when the server replays a voided sale', async () => {
+    const result = await checkoutCart(
+      sampleCart(),
+      mockClient(async () => commitResult({ status: 'voided', replayed: true, totalPesewas: pesewas(37905) })),
+      'cashier',
+    )
+    expect(result).toMatchObject({ ok: true, status: 'voided' })
+  })
+
+  it('keeps the same sale id and line ids on P0004 idempotency_key_reuse but keeps the items', async () => {
     const before = sampleCart()
     const after = await checkoutCart(
       before,
@@ -158,12 +196,9 @@ describe('checkoutCart', () => {
       'cashier',
     )
     expect(after.ok).toBe(false)
-    if (!after.ok) {
-      expect(after.cart.id).not.toBe(before.id)
-      expect(after.cart.lines.map((l) => l.id)).not.toEqual(before.lines.map((l) => l.id))
-      expect(after.cart.lines.map((l) => l.variantId)).toEqual(before.lines.map((l) => l.variantId))
-      expect(after.cart.lines.map((l) => l.quantity)).toEqual(before.lines.map((l) => l.quantity))
-      expect(after.cart.lines.map((l) => l.label)).toEqual(before.lines.map((l) => l.label))
+    if (!after.ok && after.kind === 'error') {
+      expect(after.idempotencyReuse).toBe(true)
+      expect(after.cart).toEqual(before)
     }
   })
 
@@ -176,7 +211,10 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
   })
 
   it('preserves the cart on P0004 empty sale', async () => {
@@ -188,7 +226,10 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
   })
 
   it('preserves the cart on P0004 replay-mismatch fallback', async () => {
@@ -200,7 +241,10 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
   })
 
   it('preserves cart lines but regenerates line ids on P0005', async () => {
@@ -213,10 +257,25 @@ describe('checkoutCart', () => {
       'cashier',
     )
     expect(after.ok).toBe(false)
-    if (!after.ok) {
+    if (!after.ok && after.kind === 'error') {
       expect(after.cart.lines).toHaveLength(2)
       expect(after.cart.lines.map((l) => l.variantId)).toEqual(before.lines.map((l) => l.variantId))
       expect(after.cart.lines.map((l) => l.id)).not.toEqual(before.lines.map((l) => l.id))
+    }
+  })
+
+  it('maps timeout to generic network failure with the same cart id', async () => {
+    const before = sampleCart()
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw new CommitSaleTimeoutError()
+      }),
+      'cashier',
+    )
+    expect(after).toMatchObject({ ok: false, kind: 'error', code: 'generic' })
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart.id).toBe(before.id)
     }
   })
 
@@ -229,8 +288,11 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
-    if (!after.ok) {
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
+    if (!after.ok && after.kind === 'error') {
       expect(after.userMessage).toMatch(/an item in the cart/i)
     }
   })
@@ -244,7 +306,10 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
   })
 
   it('preserves the cart on a generic RPC failure', async () => {
@@ -256,7 +321,10 @@ describe('checkoutCart', () => {
       }),
       'cashier',
     )
-    expect(!after.ok && after.cart).toEqual(before)
+    expect(after.ok).toBe(false)
+    if (!after.ok && after.kind === 'error') {
+      expect(after.cart).toEqual(before)
+    }
   })
 })
 

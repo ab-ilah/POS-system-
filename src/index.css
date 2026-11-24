@@ -14,16 +14,16 @@
 }
 
 :root {
-  --background: #f4f1eb;
-  --foreground: #1c1917;
-  --card: #fffcf7;
-  --primary: #1f4d3a;
-  --primary-foreground: #f8faf8;
-  --border: #e4ddd2;
-  --input: #e4ddd2;
-  --ring: #1f4d3a;
-  --muted: #efeae2;
-  --muted-foreground: #57534e;
+  --background: #f7f5f0;
+  --foreground: #141b2d;
+  --card: #ffffff;
+  --primary: #1e2a44;
+  --primary-foreground: #ffffff;
+  --border: #d9d6ce;
+  --input: #d9d6ce;
+  --ring: #1e2a44;
+  --muted: #f0ede6;
+  --muted-foreground: #4a5368;
 }
 
 body {

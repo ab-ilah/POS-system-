@@ -1,4 +1,4 @@
-import type { Pesewas } from './money.ts'
+import { lineTotal, sumPesewas, type Pesewas } from './money.ts'
 import type { SaleId, SaleLineId, StoreId, VariantId } from '../types/index.ts'
 
 export type CartLine = {
@@ -37,4 +37,78 @@ export function cloneCart(cart: Cart): Cart {
     storeId: cart.storeId,
     lines: cart.lines.map((line) => ({ ...line })),
   }
+}
+
+export function createCart(storeId: StoreId, newId: () => string = () => crypto.randomUUID()): Cart {
+  return { id: newId(), storeId, lines: [] }
+}
+
+export function cartGrossPesewas(cart: Cart): Pesewas {
+  return sumPesewas(cart.lines.map((line) => lineTotal(line.unitPricePesewas, line.quantity)))
+}
+
+export type CartLineInput = {
+  variantId: VariantId
+  label: string
+  unitPricePesewas: Pesewas
+  quantity?: number
+}
+
+export function addCartLine(
+  cart: Cart,
+  input: CartLineInput,
+  newId: () => string = () => crypto.randomUUID(),
+): Cart {
+  const existing = cart.lines.find((line) => line.variantId === input.variantId)
+  if (existing) {
+    return setCartLineQuantity(cart, existing.id, existing.quantity + (input.quantity ?? 1))
+  }
+  return {
+    ...cart,
+    lines: [
+      ...cart.lines,
+      {
+        id: newId(),
+        variantId: input.variantId,
+        label: input.label,
+        unitPricePesewas: input.unitPricePesewas,
+        quantity: input.quantity ?? 1,
+      },
+    ],
+  }
+}
+
+export function setCartLineQuantity(cart: Cart, lineId: SaleLineId, quantity: number): Cart {
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return {
+      ...cart,
+      lines: cart.lines.filter((line) => line.id !== lineId),
+    }
+  }
+  return {
+    ...cart,
+    lines: cart.lines.map((line) => (line.id === lineId ? { ...line, quantity } : line)),
+  }
+}
+
+export function changeCartLineQuantity(cart: Cart, lineId: SaleLineId, delta: number): Cart {
+  const line = cart.lines.find((entry) => entry.id === lineId)
+  if (!line) return cart
+  return setCartLineQuantity(cart, lineId, line.quantity + delta)
+}
+
+/** After any deliberate line edit following a commit attempt, mint a fresh sale id (PR #14 / POS-02e). */
+export function cartAfterLineEdit(cart: Cart, next: Cart): Cart {
+  if (next.lines === cart.lines && next.lines.length === cart.lines.length) {
+    const same =
+      next.lines.every((line, index) => {
+        const prior = cart.lines[index]
+        return prior && prior.id === line.id && prior.quantity === line.quantity && prior.variantId === line.variantId
+      })
+    if (same) return next
+  }
+  if (next.id === cart.id) {
+    return { ...next, id: crypto.randomUUID() }
+  }
+  return next
 }
