@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StaffSessionTestProvider } from '../../src/app/staff-session.tsx'
@@ -26,9 +27,11 @@ function mount(ui: ReactNode): { container: HTMLDivElement; root: Root } {
   const root = createRoot(container)
   act(() => {
     root.render(
-      <StaffSessionTestProvider role="cashier">
-        <MemoryRouter>{ui}</MemoryRouter>
-      </StaffSessionTestProvider>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <StaffSessionTestProvider role="cashier" userId="checkout-test-user">
+          <MemoryRouter>{ui}</MemoryRouter>
+        </StaffSessionTestProvider>
+      </QueryClientProvider>,
     )
   })
   return { container, root }
@@ -74,6 +77,28 @@ describe('SellCheckoutPanel states', () => {
     )
     expect(payLabels).toHaveLength(1)
     expect(container.textContent).not.toMatch(/tender|split payment/i)
+    root.unmount()
+  })
+
+  it('shows voided replay with the server total', async () => {
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockResolvedValue({
+      ok: true,
+      saleId: 'sale-1',
+      replayed: true,
+      status: 'voided',
+      totalPesewas: pesewas(12345),
+    })
+
+    const { container, root } = mount(<Harness />)
+    await addDemoLine(container)
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toMatch(/Sale already recorded/)
+    expect(container.textContent).toMatch(/GH₵123\.45/)
     root.unmount()
   })
 
@@ -156,7 +181,7 @@ describe('SellCheckoutPanel states', () => {
 
     const { container, root } = mount(<Harness />)
     await addDemoLine(container)
-    const saleIdBeforePay = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const saleIdBeforePay = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
 
     const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
     await act(async () => {
@@ -255,7 +280,7 @@ describe('SellCheckoutPanel states', () => {
       await Promise.resolve()
     })
 
-    const conflictId = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const conflictId = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(conflictId).toBe('sale-conflict-1')
 
     const ring = Array.from(container.querySelectorAll('button')).find((button) =>
@@ -272,7 +297,7 @@ describe('SellCheckoutPanel states', () => {
     await act(async () => {
       cancel?.click()
     })
-    const idAfterCancel = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const idAfterCancel = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(idAfterCancel).toBe(conflictId)
 
     await act(async () => {
@@ -284,10 +309,88 @@ describe('SellCheckoutPanel states', () => {
     await act(async () => {
       confirm?.click()
     })
-    const idAfterConfirm = JSON.parse(localStorage.getItem('pos-sell-cart:cashier') ?? '{}').id as string
+    const idAfterConfirm = JSON.parse(localStorage.getItem('pos-sell-cart:checkout-test-user') ?? '{}').id as string
     expect(idAfterConfirm).not.toBe(conflictId)
 
     root.unmount()
+  })
+
+  it('hides qty steppers and quick add during conflict and price_confirm', async () => {
+    const newPrice = shelfPriceFromCedis(49, 0)
+
+    const conflict = vi.spyOn(checkoutGateway, 'browserCheckoutCart')
+    conflict.mockResolvedValueOnce({
+      ok: false,
+      kind: 'error',
+      userMessage:
+        'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.',
+      code: 'P0004',
+      idempotencyReuse: true,
+      cart: {
+        id: 'sale-1',
+        storeId: 'demo-store-1',
+        lines: [
+          {
+            id: 'line-1',
+            variantId: 'demo-tee-m-white',
+            label: 'Basic cotton tee, M · White',
+            quantity: 1,
+            unitPricePesewas: shelfPriceFromCedis(45, 50),
+          },
+        ],
+      },
+    })
+
+    const { container, root } = mount(<Harness />)
+    await addDemoLine(container)
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+    expect(container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+
+    root.unmount()
+    vi.restoreAllMocks()
+
+    const variantPrices = await import('../../src/lib/data/variant-prices.ts')
+    vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(
+      new Map([['demo-tee-m-white', newPrice]]),
+    )
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockResolvedValue({
+      ok: false,
+      kind: 'error',
+      userMessage: 'The shelf price changed. Review the updated total before taking payment again.',
+      code: 'P0003',
+      idempotencyReuse: false,
+      priceChangeVariantIds: ['demo-tee-m-white'],
+      cart: {
+        id: 'sale-1',
+        storeId: 'demo-store-1',
+        lines: [
+          {
+            id: 'line-1',
+            variantId: 'demo-tee-m-white',
+            label: 'Basic cotton tee, M · White',
+            quantity: 1,
+            unitPricePesewas: shelfPriceFromCedis(45, 50),
+          },
+        ],
+      },
+    })
+
+    const priceUi = mount(<Harness />)
+    await addDemoLine(priceUi.container)
+    const payAgain = Array.from(priceUi.container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Pay',
+    )
+    await act(async () => {
+      payAgain?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(priceUi.container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+    priceUi.root.unmount()
   })
 
   it('shows generic network fallback with Retry only', async () => {

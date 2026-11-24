@@ -59,12 +59,27 @@ function mockClient(fn: CommitSaleClient['commitSale']): CommitSaleClient {
 }
 
 describe('mapCommitSaleFailure', () => {
-  it('maps P0004 idempotency_key_reuse to receipt-check copy and new sale plus line ids', () => {
+  it('maps P0004 idempotency_key_reuse to receipt-check copy without minting ids in the mapper', () => {
     const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_reuse' }))
     expect(mapped.code).toBe('P0004')
     expect(mapped.userMessage).toMatch(/Check the last receipt/i)
-    expect(mapped.assignNewSaleId).toBe(true)
-    expect(mapped.regenerateLineIds).toBe(true)
+    expect(mapped.assignNewSaleId).toBe(false)
+    expect(mapped.regenerateLineIds).toBe(false)
+  })
+
+  it('maps P0004 idempotency_key_conflict like idempotency_key_reuse', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_conflict' }))
+    expect(mapped.code).toBe('P0004')
+    expect(mapped.userMessage).toMatch(/Check the last receipt/i)
+    expect(mapped.assignNewSaleId).toBe(false)
+    expect(mapped.regenerateLineIds).toBe(false)
+  })
+
+  it('maps P0003 to shelf price changed copy', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0003', { message: 'unit price does not match shelf price' }))
+    expect(mapped.code).toBe('P0003')
+    expect(mapped.userMessage).toMatch(/shelf price changed/i)
+    expect(mapped.assignNewSaleId).toBe(false)
   })
 
   it('maps P0004 invalid sale line to cashier copy', () => {
@@ -184,6 +199,22 @@ describe('checkoutCart', () => {
       'cashier',
     )
     expect(result).toMatchObject({ ok: true, status: 'voided' })
+  })
+
+  it('returns affected variant ids on P0003', async () => {
+    const before = sampleCart()
+    const after = await checkoutCart(
+      before,
+      mockClient(async () => {
+        throw rpcError('P0003', { message: 'unit price mismatch', details: 'variant_id=var-shirt' })
+      }),
+      'cashier',
+    )
+    expect(after).toMatchObject({ ok: false, kind: 'error', code: 'P0003' })
+    if (!after.ok && after.kind === 'error') {
+      expect(after.priceChangeVariantIds).toEqual(['var-shirt'])
+      expect(after.cart.id).toBe(before.id)
+    }
   })
 
   it('keeps the same sale id and line ids on P0004 idempotency_key_reuse but keeps the items', async () => {

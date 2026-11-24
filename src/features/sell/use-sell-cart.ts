@@ -43,7 +43,7 @@ export const DEFAULT_STORE_ID = 'demo-store-1'
 
 export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
   const { ready, session } = useStaffSession()
-  const sessionKey = session?.role ?? 'signed-out'
+  const sessionKey = session?.userId ?? 'signed-out'
   const [cart, setCart] = useState<Cart>(() => createCart(storeId))
   const hadCommitAttempt = useRef(false)
   const priorSession = useRef<string | null>(null)
@@ -77,18 +77,19 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
     writeStoredCart(sessionKey, cart)
   }, [cart, ready, session, sessionKey])
 
-  const updateCart = useCallback(
-    (next: Cart | ((previous: Cart) => Cart)) => {
-      setCart((previous) => {
-        const resolved = typeof next === 'function' ? next(previous) : next
-        if (hadCommitAttempt.current) {
-          return cartAfterLineEdit(previous, resolved)
-        }
-        return resolved
-      })
-    },
-    [],
-  )
+  const replaceCart = useCallback((next: Cart) => {
+    setCart(next)
+  }, [])
+
+  const updateCart = useCallback((next: Cart | ((previous: Cart) => Cart)) => {
+    setCart((previous) => {
+      const resolved = typeof next === 'function' ? next(previous) : next
+      if (hadCommitAttempt.current) {
+        return cartAfterLineEdit(previous, resolved)
+      }
+      return resolved
+    })
+  }, [])
 
   const addLine = useCallback(
     (input: CartLineInput) => {
@@ -133,7 +134,8 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
       markCommitAttempt,
       clearCommitAttempt,
       setCart: updateCart,
+      replaceCart,
     }),
-    [addLine, cart, changeQuantity, clearCart, clearCommitAttempt, markCommitAttempt, mintNewSaleId, updateCart],
+    [addLine, cart, changeQuantity, clearCart, clearCommitAttempt, markCommitAttempt, mintNewSaleId, replaceCart, updateCart],
   )
 }

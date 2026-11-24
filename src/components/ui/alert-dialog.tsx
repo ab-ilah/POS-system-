@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useId, useRef } from 'react'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -26,6 +26,8 @@ export function AlertDialog({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const confirmedRef = useRef(false)
+  const titleId = useId()
+  const descriptionId = useId()
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -46,13 +48,15 @@ export function AlertDialog({
   return (
     <dialog
       ref={dialogRef}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       className={cn(
         'w-[calc(100%-2rem)] max-w-sm rounded-lg border border-border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40',
         !open && 'hidden',
         className,
       )}
-      aria-labelledby="alert-dialog-title"
-      aria-describedby="alert-dialog-description"
       onCancel={(event) => {
         event.preventDefault()
         onCancel()
@@ -61,12 +65,12 @@ export function AlertDialog({
         if (!confirmedRef.current) onCancel()
       }}
     >
-      <div className="space-y-4" role="alertdialog" aria-modal="true">
+      <div className="space-y-4">
         <div className="space-y-2">
-          <h2 id="alert-dialog-title" className="text-lg font-semibold">
+          <h2 id={titleId} className="text-lg font-semibold">
             {title}
           </h2>
-          <p id="alert-dialog-description" className="text-sm text-muted-foreground">
+          <p id={descriptionId} className="text-sm text-muted-foreground">
             {description}
           </p>
         </div>

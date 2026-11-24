@@ -1,4 +1,5 @@
-import { mapCommitSaleFailure, type CommitSaleFailureCode } from './commit-sale-errors.ts'
+import { mapCommitSaleFailure, variantIdFromCommitSaleDetails, type CommitSaleFailureCode } from './commit-sale-errors.ts'
+import { isCommitSaleRpcError } from './data/commit-sale-rpc-error.ts'
 import {
   cartLineLabels,
   cloneCart,
@@ -9,9 +10,6 @@ import {
 import { commitSale, prepareSale, type CommitSaleClient, type CommitSaleResult } from './data/sales.ts'
 import type { Pesewas } from './money.ts'
 import type { Role } from '../types/index.ts'
-
-const IDEMPOTENCY_KEY_REUSE =
-  'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.'
 
 export const CHECKOUT_UNCONFIRMED_MESSAGE =
   "We couldn't confirm this sale. Check Sales before taking payment again."
@@ -39,9 +37,18 @@ export type CheckoutFailure = {
   code: CommitSaleFailureCode
   /** True when the mapped failure is P0004 idempotency_key_reuse (cart stays on the same key). */
   idempotencyReuse: boolean
+  /** Set when the server rejected a stale shelf price (P0003). */
+  priceChangeVariantIds?: readonly string[]
 }
 
 export type CheckoutResult = CheckoutSuccess | CheckoutUnconfirmed | CheckoutFailure
+
+function isIdempotencyKeyReuse(error: unknown): boolean {
+  if (!isCommitSaleRpcError(error)) return false
+  if (error.code.trim().toUpperCase() !== 'P0004') return false
+  const message = error.message.trim().toLowerCase()
+  return message === 'idempotency_key_reuse' || message === 'idempotency_key_conflict'
+}
 
 function saleCommandFromCart(cart: Cart) {
   return prepareSale({
@@ -57,9 +64,7 @@ function saleCommandFromCart(cart: Cart) {
 }
 
 function cartAfterFailure(cart: Cart, mapped: ReturnType<typeof mapCommitSaleFailure>): Cart {
-  if (mapped.code === 'P0004' && mapped.userMessage === IDEMPOTENCY_KEY_REUSE) {
-    return cart
-  }
+  if (mapped.code === 'P0004') return cart
   let nextCart = cart
   if (mapped.assignNewSaleId) {
     nextCart = regenerateCartSaleId(nextCart)
@@ -99,7 +104,14 @@ export async function checkoutCart(
     return successFromResult(result, snapshot)
   } catch (error) {
     const mapped = mapCommitSaleFailure(error, { lineLabelByVariantId: cartLineLabels(snapshot) })
-    const isReuse = mapped.code === 'P0004' && mapped.userMessage === IDEMPOTENCY_KEY_REUSE
+    const isReuse = isIdempotencyKeyReuse(error)
+    const priceChangeVariantIds =
+      mapped.code === 'P0003' && isCommitSaleRpcError(error)
+        ? (() => {
+            const variantId = variantIdFromCommitSaleDetails(error.details)
+            return variantId ? [variantId] : cart.lines.map((line) => line.variantId)
+          })()
+        : undefined
     return {
       ok: false,
       kind: 'error',
@@ -107,6 +119,7 @@ export async function checkoutCart(
       cart: cartAfterFailure(snapshot, mapped),
       code: mapped.code,
       idempotencyReuse: isReuse,
+      priceChangeVariantIds,
     }
   }
 }

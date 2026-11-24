@@ -43,6 +43,10 @@ export type Database = {
         quantity: DbInteger
         unit_price_pesewas: Pesewas
       }>
+      product_variants: TableDef<{
+        id: string
+        price_pesewas: Pesewas
+      }>
     }
     Views: {
       [_ in never]: never
