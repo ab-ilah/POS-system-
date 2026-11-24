@@ -8,7 +8,14 @@ const NOT_CONFIGURED = 'The till cannot reach the server right now. Try again in
 export async function browserCheckoutCart(cart: Cart, role: Role): Promise<CheckoutResult> {
   const supabase = browserSupabase()
   if (!supabase) {
-    return { ok: false, userMessage: NOT_CONFIGURED, cart }
+    return {
+      ok: false,
+      kind: 'error',
+      userMessage: NOT_CONFIGURED,
+      cart,
+      code: 'generic',
+      idempotencyReuse: false,
+    }
   }
   return checkoutCart(cart, createCommitSaleClient(supabase), role)
 }

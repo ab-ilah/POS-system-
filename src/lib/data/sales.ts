@@ -1,5 +1,6 @@
 import { dbInteger, lineTotal, sumPesewas, type Pesewas } from '../money.ts'
 import { assertCanExecuteCommitSale } from '../permissions.ts'
+import type { CommitSaleStatus } from '../../types/database.ts'
 import type { Role } from '../../types/index.ts'
 import type { SaleId, SaleLineId, StoreId, VariantId } from '../../types/index.ts'
 
@@ -48,6 +49,8 @@ export type CommitSaleArgs = {
 export type CommitSaleResult = {
   saleId: string
   replayed: boolean
+  status: CommitSaleStatus | 'unknown'
+  totalPesewas: Pesewas | null
 }
 
 export type CommitSaleClient = {

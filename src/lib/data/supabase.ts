@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { Pesewas } from '../money.ts'
 import type { Database } from '../../types/database.ts'
 import { CommitSaleRpcError } from './commit-sale-rpc-error.ts'
 import { commitSaleWithTimeout } from './commit-sale-call.ts'
@@ -38,11 +39,25 @@ export function browserSupabase(): TypedSupabaseClient | null {
   return createSupabaseBrowserClient(env.url, env.anonKey)
 }
 
+function parseCommitSaleStatus(status: unknown): CommitSaleResult['status'] {
+  if (status === 'completed' || status === 'voided') return status
+  return 'unknown'
+}
+
 function commitSaleResult(data: Database['public']['Functions']['commit_sale']['Returns'] | null): CommitSaleResult {
   if (!data || typeof data.sale_id !== 'string' || typeof data.replayed !== 'boolean') {
     throw new Error('commit_sale returned an unexpected payload')
   }
-  return { saleId: data.sale_id, replayed: data.replayed }
+  const totalPesewas =
+    typeof data.total_pesewas === 'number' && Number.isSafeInteger(data.total_pesewas)
+      ? (data.total_pesewas as Pesewas)
+      : null
+  return {
+    saleId: data.sale_id,
+    replayed: data.replayed,
+    status: parseCommitSaleStatus(data.status),
+    totalPesewas,
+  }
 }
 
 export function createCommitSaleClient(

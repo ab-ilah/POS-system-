@@ -8,7 +8,12 @@ function rpcClient() {
     async commitSale(args) {
       calls.push(args)
       const replayed = calls.filter((call) => call.idempotencyKey === args.idempotencyKey).length > 1
-      return { saleId: args.idempotencyKey, replayed }
+      return {
+        saleId: args.idempotencyKey,
+        replayed,
+        status: 'completed' as const,
+        totalPesewas: shirt,
+      }
     },
   }
   return { client, calls }
@@ -72,8 +77,8 @@ describe('commitSale', () => {
     const first = await commitSale(client, command, 'cashier')
     const second = await commitSale(client, command, 'cashier')
 
-    expect(first).toEqual({ saleId: 'sale-1', replayed: false })
-    expect(second).toEqual({ saleId: 'sale-1', replayed: true })
+    expect(first).toMatchObject({ saleId: 'sale-1', replayed: false, status: 'completed' })
+    expect(second).toMatchObject({ saleId: 'sale-1', replayed: true, status: 'completed' })
     expect(calls).toHaveLength(2)
     expect(calls[0]).toEqual(calls[1])
     expect(calls[0]).toMatchObject({
