@@ -3,11 +3,12 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vitest/config'
+import { resolvePosDevE2eAssist } from './scripts/vite-e2e-assist-define.ts'
 
 // Offline strategy is a later ADR. The plugin stays installed and disabled.
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   define: {
-    __POS_DEV_E2E_ASSIST__: JSON.stringify(process.env.VITE_E2E_ASSIST === 'true'),
+    __POS_DEV_E2E_ASSIST__: JSON.stringify(resolvePosDevE2eAssist({ command, mode })),
   },
   plugins: [
     react(),
@@ -25,4 +26,4 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
   },
-})
+}))

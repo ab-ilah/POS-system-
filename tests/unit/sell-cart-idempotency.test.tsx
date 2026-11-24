@@ -56,12 +56,12 @@ function mountHarness(userId = 'cashier-user-1') {
   return { container, root, queryClient }
 }
 
-async function addDemoLine(container: HTMLElement) {
+async function addDemoLine(container: HTMLElement, label = 'Basic cotton tee') {
   await act(async () => {
     container.querySelector<HTMLButtonElement>('summary')?.click()
   })
   const quickAdd = Array.from(container.querySelectorAll('button')).find((button) =>
-    button.textContent?.includes('Basic cotton tee'),
+    button.textContent?.includes(label),
   )
   await act(async () => {
     quickAdd?.click()
@@ -482,7 +482,9 @@ describe('useSellCart idempotency with checkoutCart clones', () => {
 
     const { container, root } = mountHarness('remove-line')
     await addDemoLine(container)
+    await addDemoLine(container, 'Linen shirt')
     const saleId = JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}remove-line`) ?? '{}').id as string
+    expect(JSON.parse(localStorage.getItem(`${SELL_CART_STORAGE_PREFIX}remove-line`) ?? '{}').lines).toHaveLength(2)
 
     const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
     await act(async () => {

@@ -254,11 +254,7 @@ export async function upsertProductVariant(
       return mapVariant(data)
     }
 
-    const insertPayload = {
-      ...updatePayload,
-      stock_qty: 0,
-    }
-    const { data, error } = await client.from('product_variants').insert(insertPayload).select('*').single()
+    const { data, error } = await client.from('product_variants').insert(updatePayload).select('*').single()
     if (error) throw error
     return mapVariant(data)
   } catch (error) {

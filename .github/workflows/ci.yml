@@ -69,6 +69,14 @@ jobs:
           # Exact key match is post-merge only. Pull requests, including forks, receive no secrets.
           BUNDLE_SCAN_FORBIDDEN_SECRET: ${{ github.event_name == 'push' && secrets.BUNDLE_SCAN_FORBIDDEN_SECRET || '' }}
 
+      - name: Verify assist flag cannot ship in production builds
+        run: |
+          VITE_E2E_ASSIST=true npm run build
+          npm run scan:bundle
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_ANON_KEY: ci-placeholder-not-a-credential
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
