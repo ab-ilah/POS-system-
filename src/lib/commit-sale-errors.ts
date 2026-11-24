@@ -66,8 +66,8 @@ function insufficientStockMessage(
 
 function mapP0004(error: CommitSaleRpcError): MappedCommitSaleFailure {
   const message = normaliseMessage(error.message)
-  // Backend: supabase/migrations/20261111120000_commit_sale_hardening.sql (idempotency_key_reuse)
-  if (message === 'idempotency_key_reuse') {
+  // Backend: supabase/migrations/20261111120000_commit_sale_hardening.sql
+  if (message === 'idempotency_key_reuse' || message === 'idempotency_key_conflict') {
     return {
       code: 'P0004',
       userMessage: IDEMPOTENCY_KEY_REUSE,

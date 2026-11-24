@@ -315,6 +315,84 @@ describe('SellCheckoutPanel states', () => {
     root.unmount()
   })
 
+  it('hides qty steppers and quick add during conflict and price_confirm', async () => {
+    const newPrice = shelfPriceFromCedis(49, 0)
+
+    const conflict = vi.spyOn(checkoutGateway, 'browserCheckoutCart')
+    conflict.mockResolvedValueOnce({
+      ok: false,
+      kind: 'error',
+      userMessage:
+        'An earlier sale from this cart was already recorded with different items. Check the last receipt before taking payment again.',
+      code: 'P0004',
+      idempotencyReuse: true,
+      cart: {
+        id: 'sale-1',
+        storeId: 'demo-store-1',
+        lines: [
+          {
+            id: 'line-1',
+            variantId: 'demo-tee-m-white',
+            label: 'Basic cotton tee, M · White',
+            quantity: 1,
+            unitPricePesewas: shelfPriceFromCedis(45, 50),
+          },
+        ],
+      },
+    })
+
+    const { container, root } = mount(<Harness />)
+    await addDemoLine(container)
+    const pay = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Pay')
+    await act(async () => {
+      pay?.click()
+      await Promise.resolve()
+    })
+    expect(container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+
+    root.unmount()
+    vi.restoreAllMocks()
+
+    const variantPrices = await import('../../src/lib/data/variant-prices.ts')
+    vi.spyOn(variantPrices, 'fetchVariantShelfPrices').mockResolvedValue(
+      new Map([['demo-tee-m-white', newPrice]]),
+    )
+    vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockResolvedValue({
+      ok: false,
+      kind: 'error',
+      userMessage: 'The shelf price changed. Review the updated total before taking payment again.',
+      code: 'P0003',
+      idempotencyReuse: false,
+      priceChangeVariantIds: ['demo-tee-m-white'],
+      cart: {
+        id: 'sale-1',
+        storeId: 'demo-store-1',
+        lines: [
+          {
+            id: 'line-1',
+            variantId: 'demo-tee-m-white',
+            label: 'Basic cotton tee, M · White',
+            quantity: 1,
+            unitPricePesewas: shelfPriceFromCedis(45, 50),
+          },
+        ],
+      },
+    })
+
+    const priceUi = mount(<Harness />)
+    await addDemoLine(priceUi.container)
+    const payAgain = Array.from(priceUi.container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Pay',
+    )
+    await act(async () => {
+      payAgain?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(priceUi.container.querySelectorAll('button[aria-label^="Decrease"]')).toHaveLength(0)
+    priceUi.root.unmount()
+  })
+
   it('shows generic network fallback with Retry only', async () => {
     vi.spyOn(checkoutGateway, 'browserCheckoutCart').mockResolvedValue({
       ok: false,

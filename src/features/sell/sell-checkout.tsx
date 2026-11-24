@@ -136,18 +136,22 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successTotal, setSuccessTotal] = useState<Pesewas | null>(null)
   const [ringNewOpen, setRingNewOpen] = useState(false)
-  const [priceChangeConfirmed, setPriceChangeConfirmed] = useState(false)
+  const [priceRefreshStatus, setPriceRefreshStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const priceRefreshContextRef = useRef<{
+    cart: Cart
+    variantIds: readonly string[]
+    userMessage: string
+  } | null>(null)
   const checkoutInFlight = useRef(false)
   const { refreshCartShelfPrices } = useShelfPriceRefresh()
   const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } = sellCart
 
-  const priceChangeAwaitingConfirm = phase === 'price_confirm' && !priceChangeConfirmed
   const locked =
     phase === 'committing' ||
     phase === 'unconfirmed' ||
     phase === 'network' ||
     phase === 'conflict' ||
-    priceChangeAwaitingConfirm
+    phase === 'price_confirm'
   const payDisabled =
     cart.lines.length === 0 ||
     !online ||
@@ -155,6 +159,23 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
     locked ||
     phase === 'success' ||
     phase === 'voided'
+
+  const runShelfPriceRefresh = useCallback(
+    async (cartSnapshot: Cart, variantIds: readonly string[], userMessage: string) => {
+      setPriceRefreshStatus('loading')
+      setErrorMessage(`${userMessage} Updating shelf prices…`)
+      try {
+        const refreshed = await refreshCartShelfPrices(cartSnapshot, variantIds)
+        replaceCart(refreshed)
+        setPriceRefreshStatus('ready')
+        setErrorMessage(`${userMessage} New total: ${formatGhs(cartGrossPesewas(refreshed))}.`)
+      } catch {
+        setPriceRefreshStatus('error')
+        setErrorMessage(`${userMessage} Could not load the latest shelf prices.`)
+      }
+    },
+    [refreshCartShelfPrices, replaceCart],
+  )
 
   const handleCheckoutResult = useCallback(
     (result: CheckoutResult) => {
@@ -181,16 +202,16 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
         return
       }
       if (result.code === 'P0003') {
-        setPriceChangeConfirmed(false)
+        const variantIds = result.priceChangeVariantIds ?? []
+        setPriceRefreshStatus('loading')
         setPhase('price_confirm')
-        setErrorMessage(result.userMessage)
         replaceCart(result.cart)
-        void refreshCartShelfPrices(result.cart, result.priceChangeVariantIds ?? []).then((refreshed) => {
-          replaceCart(refreshed)
-          setErrorMessage(
-            `${result.userMessage} New total: ${formatGhs(cartGrossPesewas(refreshed))}.`,
-          )
-        })
+        priceRefreshContextRef.current = {
+          cart: result.cart,
+          variantIds,
+          userMessage: result.userMessage,
+        }
+        void runShelfPriceRefresh(result.cart, variantIds, result.userMessage)
         return
       }
       if (result.code === 'generic') {
@@ -201,7 +222,7 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       setPhase('editing')
       setErrorMessage(result.userMessage)
     },
-    [refreshCartShelfPrices, replaceCart],
+    [replaceCart, runShelfPriceRefresh],
   )
 
   const executeCheckout = useCallback(
@@ -307,16 +328,39 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
         {errorMessage && phase !== 'conflict' ? (
           <StatusBanner tone="danger" actions={
             phase === 'price_confirm' ? (
-              <Button
-                type="button"
-                className="min-h-11"
-                onClick={() => {
-                  setPriceChangeConfirmed(true)
-                  setPhase('editing')
-                }}
-              >
-                Accept new price
-              </Button>
+              priceRefreshStatus === 'error' ? (
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  onClick={() => {
+                    const ctx = priceRefreshContextRef.current
+                    if (!ctx) return
+                    void runShelfPriceRefresh(ctx.cart, ctx.variantIds, ctx.userMessage)
+                  }}
+                >
+                  Retry price refresh
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  disabled={priceRefreshStatus !== 'ready'}
+                  onClick={() => {
+                    setPriceRefreshStatus('idle')
+                    priceRefreshContextRef.current = null
+                    setPhase('editing')
+                  }}
+                >
+                  {priceRefreshStatus === 'loading' ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+                      Accept new price
+                    </>
+                  ) : (
+                    'Accept new price'
+                  )}
+                </Button>
+              )
             ) : phase === 'unconfirmed' ? (
               <>
                 <Button type="button" variant="outline" asChild className="min-h-11">

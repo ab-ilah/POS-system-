@@ -67,6 +67,14 @@ describe('mapCommitSaleFailure', () => {
     expect(mapped.regenerateLineIds).toBe(false)
   })
 
+  it('maps P0004 idempotency_key_conflict like idempotency_key_reuse', () => {
+    const mapped = mapCommitSaleFailure(rpcError('P0004', { message: 'idempotency_key_conflict' }))
+    expect(mapped.code).toBe('P0004')
+    expect(mapped.userMessage).toMatch(/Check the last receipt/i)
+    expect(mapped.assignNewSaleId).toBe(false)
+    expect(mapped.regenerateLineIds).toBe(false)
+  })
+
   it('maps P0003 to shelf price changed copy', () => {
     const mapped = mapCommitSaleFailure(rpcError('P0003', { message: 'unit price does not match shelf price' }))
     expect(mapped.code).toBe('P0003')
