@@ -10,7 +10,8 @@ import {
   type CartLineInput,
 } from '@/lib/cart.ts'
 
-const STORAGE_PREFIX = 'pos-sell-cart:'
+export const SELL_CART_STORAGE_PREFIX = 'pos-sell-cart:'
+const STORAGE_PREFIX = SELL_CART_STORAGE_PREFIX
 
 function storageKey(sessionKey: string): string {
   return `${STORAGE_PREFIX}${sessionKey}`
@@ -50,15 +51,21 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
   useEffect(() => {
     if (!ready) return
     if (priorSession.current !== null && priorSession.current !== sessionKey) {
-      setCart(createCart(storeId))
-      hadCommitAttempt.current = false
       writeStoredCart(priorSession.current, null)
     }
     priorSession.current = sessionKey
     if (!session) {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith(STORAGE_PREFIX)) localStorage.removeItem(key)
+      }
       setCart(createCart(storeId))
       hadCommitAttempt.current = false
       return
+    }
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(STORAGE_PREFIX) && key !== storageKey(sessionKey)) {
+        localStorage.removeItem(key)
+      }
     }
     const stored = readStoredCart(sessionKey, storeId)
     if (stored) setCart(stored)
@@ -86,13 +93,7 @@ export function useSellCart(storeId: string = DEFAULT_STORE_ID) {
   const addLine = useCallback(
     (input: CartLineInput) => {
       hadCommitAttempt.current = false
-      updateCart((previous) => {
-        const withLine = addCartLine(previous, input)
-        if (previous.lines.length === 0 && withLine.lines.length === 1) {
-          return withLine
-        }
-        return withLine
-      })
+      updateCart((previous) => addCartLine(previous, input))
     },
     [updateCart],
   )

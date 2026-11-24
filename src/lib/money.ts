@@ -54,14 +54,11 @@ export function lineTotal(unitPricePesewas: Pesewas, quantity: number): Pesewas 
   return pesewas(total)
 }
 
-const GH_CEDI_PATTERN = /^(-)?GH₵\s*(\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})$/
+function groupCedis(cedis: number): string {
+  return String(cedis).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
 
-const ghsDisplayFormatter = new Intl.NumberFormat('en-GH', {
-  style: 'currency',
-  currency: 'GHS',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
+const GH_CEDI_PATTERN = /^(-)?GH₵\s*(\d{1,3}(?:,\d{3})*|\d+)\.(\d{2})$/
 
 export function parseGhs(formatted: string): Pesewas {
   const match = GH_CEDI_PATTERN.exec(formatted.trim())
@@ -76,13 +73,13 @@ export function parseGhs(formatted: string): Pesewas {
   return pesewas(sign === '-' ? -amount : amount)
 }
 
-/** Ghana cedi display for staff screens (Intl `en-GH`, e.g. GH₵180.99). */
+/** Ghana cedi display for staff screens (e.g. GH₵180.99), integer pesewas only. */
 export function formatGhs(amount: Pesewas): string {
   const value = pesewas(amount)
   const negative = value < 0
-  const formatted = ghsDisplayFormatter
-    .format(Math.abs(value) / 100)
-    .replaceAll('\u00a0', '')
-    .replace(/^GHS/i, 'GH₵')
+  const absolute = negative ? -value : value
+  const cedis = Math.trunc(absolute / 100)
+  const fraction = absolute % 100
+  const formatted = `GH₵${groupCedis(cedis)}.${String(fraction).padStart(2, '0')}`
   return negative ? `-${formatted}` : formatted
 }

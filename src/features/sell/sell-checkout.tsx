@@ -1,11 +1,12 @@
 import { Loader2, Minus, Plus } from 'lucide-react'
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStaffRole } from '@/app/use-staff-session.ts'
 import { AlertDialog, StatusBanner } from '@/components/ui/alert-dialog.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { browserCheckoutCart } from '@/lib/data/checkout-gateway.ts'
 import { cartGrossPesewas, type Cart } from '@/lib/cart.ts'
+import type { CheckoutResult } from '@/lib/checkout.ts'
 import { formatGhs, lineTotal } from '@/lib/money.ts'
 import { taxBreakdownFromGross } from '@/lib/tax.ts'
 import { DEMO_VARIANTS } from '@/features/sell/demo-catalog.ts'
@@ -133,58 +134,75 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successTotal, setSuccessTotal] = useState<Pesewas | null>(null)
   const [ringNewOpen, setRingNewOpen] = useState(false)
+  const checkoutInFlight = useRef(false)
   const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, setCart } = sellCart
 
   const locked = phase === 'committing' || phase === 'unconfirmed' || phase === 'network'
   const payDisabled =
     cart.lines.length === 0 || !online || phase === 'committing' || locked || phase === 'success' || phase === 'voided'
 
-  const runCheckout = useCallback(async () => {
-    if (!role || payDisabled) return
-    markCommitAttempt()
-    setPhase('committing')
-    setErrorMessage(null)
-    const result = await browserCheckoutCart(cart, role)
-    if (result.ok) {
-      if (result.status === 'voided') {
+  const handleCheckoutResult = useCallback(
+    (result: CheckoutResult) => {
+      if (result.ok) {
+        if (result.status === 'voided') {
+          setSuccessTotal(result.totalPesewas)
+          setPhase('voided')
+          return
+        }
         setSuccessTotal(result.totalPesewas)
-        setPhase('voided')
+        setPhase('success')
         return
       }
-      setSuccessTotal(result.totalPesewas)
-      setPhase('success')
-      return
-    }
-    if (result.kind === 'unconfirmed') {
-      setPhase('unconfirmed')
-      setErrorMessage(result.userMessage)
+      if (result.kind === 'unconfirmed') {
+        setPhase('unconfirmed')
+        setErrorMessage(result.userMessage)
+        setCart(result.cart)
+        return
+      }
       setCart(result.cart)
-      return
-    }
-    setCart(result.cart)
-    if (result.idempotencyReuse) {
+      if (result.idempotencyReuse) {
+        setErrorMessage(result.userMessage)
+        setPhase('conflict')
+        return
+      }
+      if (result.code === 'generic') {
+        setErrorMessage(result.userMessage)
+        setPhase('network')
+        return
+      }
+      setPhase('editing')
       setErrorMessage(result.userMessage)
-      setPhase('conflict')
-      return
-    }
-  if (result.code === 'generic') {
-      setErrorMessage(result.userMessage)
-      setPhase('network')
-      return
-    }
-    setPhase('editing')
-    setErrorMessage(result.userMessage)
-  }, [cart, markCommitAttempt, payDisabled, role, setCart])
+    },
+    [setCart],
+  )
 
-  const onPay = () => {
-    void runCheckout()
-  }
+  const executeCheckout = useCallback(
+    async (activeCart: Cart) => {
+      if (!role) return
+      markCommitAttempt()
+      setPhase('committing')
+      setErrorMessage(null)
+      const result = await browserCheckoutCart(activeCart, role)
+      handleCheckoutResult(result)
+    },
+    [handleCheckoutResult, markCommitAttempt, role],
+  )
 
-  const onRetry = () => {
-    setPhase('editing')
-    setErrorMessage(null)
-    void runCheckout()
-  }
+  const onPay = useCallback(() => {
+    if (!role || payDisabled || checkoutInFlight.current) return
+    checkoutInFlight.current = true
+    void executeCheckout(cart).finally(() => {
+      checkoutInFlight.current = false
+    })
+  }, [cart, executeCheckout, payDisabled, role])
+
+  const onRetry = useCallback(() => {
+    if (!role || checkoutInFlight.current) return
+    checkoutInFlight.current = true
+    void executeCheckout(cart).finally(() => {
+      checkoutInFlight.current = false
+    })
+  }, [cart, executeCheckout, role])
 
   const onConfirmNewSale = () => {
     setRingNewOpen(false)

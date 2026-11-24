@@ -13,10 +13,6 @@ type AlertDialogProps = {
   className?: string
 }
 
-function supportsDialogModal(element: HTMLDialogElement): boolean {
-  return typeof element.showModal === 'function'
-}
-
 export function AlertDialog({
   open,
   title,
@@ -29,39 +25,43 @@ export function AlertDialog({
 }: AlertDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const useNativeModal = typeof HTMLDialogElement !== 'undefined'
+  const confirmedRef = useRef(false)
 
   useEffect(() => {
     const dialog = dialogRef.current
-    if (!dialog || !useNativeModal) return
-    if (!supportsDialogModal(dialog)) return
-    if (open && !dialog.open) {
-      dialog.showModal()
-      cancelRef.current?.focus()
+    if (!dialog) return
+    if (typeof dialog.showModal === 'function') {
+      if (open && !dialog.open) {
+        confirmedRef.current = false
+        dialog.showModal()
+        queueMicrotask(() => cancelRef.current?.focus())
+      } else if (!open && dialog.open) {
+        dialog.close()
+      }
+    } else if (open) {
+      queueMicrotask(() => cancelRef.current?.focus())
     }
-    if (!open && dialog.open) {
-      dialog.close()
-    }
-  }, [open, useNativeModal])
-
-  useEffect(() => {
-    if (open) cancelRef.current?.focus()
   }, [open])
 
-  if (!open) return null
-
-  const panel = (
-    <div
+  return (
+    <dialog
+      ref={dialogRef}
       className={cn(
-        'w-full max-w-sm rounded-lg border border-border bg-card p-6 text-foreground shadow-lg',
+        'w-[calc(100%-2rem)] max-w-sm rounded-lg border border-border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40',
+        !open && 'hidden',
         className,
       )}
-      role="alertdialog"
-      aria-modal="true"
       aria-labelledby="alert-dialog-title"
       aria-describedby="alert-dialog-description"
+      onCancel={(event) => {
+        event.preventDefault()
+        onCancel()
+      }}
+      onClose={() => {
+        if (!confirmedRef.current) onCancel()
+      }}
     >
-      <div className="space-y-4">
+      <div className="space-y-4" role="alertdialog" aria-modal="true">
         <div className="space-y-2">
           <h2 id="alert-dialog-title" className="text-lg font-semibold">
             {title}
@@ -74,29 +74,25 @@ export function AlertDialog({
           <button
             ref={cancelRef}
             type="button"
-            className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onCancel}
           >
             {cancelLabel}
           </button>
-          <Button type="button" onClick={onConfirm}>
+          <Button
+            type="button"
+            className="min-h-11"
+            onClick={() => {
+              confirmedRef.current = true
+              onConfirm()
+              dialogRef.current?.close()
+            }}
+          >
             {confirmLabel}
           </Button>
         </div>
       </div>
-    </div>
-  )
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      {useNativeModal ? (
-        <dialog ref={dialogRef} open={open} className="border-0 bg-transparent p-0">
-          {panel}
-        </dialog>
-      ) : (
-        panel
-      )}
-    </div>
+    </dialog>
   )
 }
 
