@@ -50,8 +50,8 @@ describe('route access from permissions matrix', () => {
     )
   })
 
-  it('keeps cashier on sell and stock only', () => {
-    expect(visibleRoutesForRole('cashier').map((route) => route.label)).toEqual(['Sell', 'Stock'])
+  it('keeps cashier on sell, products, and stock only', () => {
+    expect(visibleRoutesForRole('cashier').map((route) => route.label)).toEqual(['Sell', 'Products', 'Stock'])
   })
 
   it('defaults each matrix role to an allowed screen', () => {
@@ -62,8 +62,14 @@ describe('route access from permissions matrix', () => {
   })
 
   it('blocks cashier from owner and manager screens', () => {
-    for (const path of ['/sales', '/products', '/day', '/staff', '/settings']) {
+    for (const path of ['/sales', '/products/new', '/day', '/staff', '/settings']) {
       expect(canAccessPath('cashier', path)).toBe(false)
     }
+  })
+
+  it('allows cashier read-only product detail', () => {
+    expect(canAccessPath('cashier', '/products')).toBe(true)
+    expect(canAccessPath('cashier', '/products/prod-tee')).toBe(true)
+    expect(canAccessPath('cashier', '/products/prod-tee/edit')).toBe(false)
   })
 })

@@ -92,13 +92,23 @@ export function setCartLineQuantity(cart: Cart, lineId: SaleLineId, quantity: nu
 }
 
 export function updateCartLineShelfPrices(cart: Cart, prices: ReadonlyMap<string, Pesewas>): Cart {
-  return {
-    ...cart,
-    lines: cart.lines.map((line) => {
-      const nextPrice = prices.get(line.variantId)
-      return nextPrice != null ? { ...line, unitPricePesewas: pesewas(nextPrice) } : line
-    }),
-  }
+  return applyCartLineShelfPrices(cart, prices).cart
+}
+
+export function applyCartLineShelfPrices(
+  cart: Cart,
+  prices: ReadonlyMap<string, Pesewas>,
+): { cart: Cart; missingVariantIds: VariantId[] } {
+  const missingVariantIds: VariantId[] = []
+  const lines = cart.lines.map((line) => {
+    const nextPrice = prices.get(line.variantId)
+    if (nextPrice == null) {
+      missingVariantIds.push(line.variantId)
+      return line
+    }
+    return { ...line, unitPricePesewas: pesewas(nextPrice) }
+  })
+  return { cart: { ...cart, lines }, missingVariantIds }
 }
 
 export function changeCartLineQuantity(cart: Cart, lineId: SaleLineId, delta: number): Cart {

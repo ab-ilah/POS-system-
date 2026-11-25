@@ -19,7 +19,10 @@ export function Shell({ children }: { children: ReactNode }) {
           </Link>
           <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm" aria-label="Main">
             {navRoutes.map((route) => {
-              const active = location.pathname === route.path || (route.path === '/sell' && location.pathname === '/')
+              const active =
+                location.pathname === route.path ||
+                (route.path === '/sell' && location.pathname === '/') ||
+                (route.path === '/products' && location.pathname.startsWith('/products'))
               return (
                 <Link
                   key={route.path}

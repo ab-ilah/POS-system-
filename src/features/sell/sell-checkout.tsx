@@ -11,20 +11,18 @@ import { formatGhs, lineTotal } from '@/lib/money.ts'
 import { taxBreakdownFromGross } from '@/lib/tax.ts'
 import { DEMO_VARIANTS } from '@/features/sell/demo-catalog.ts'
 import { useShelfPriceRefresh } from '@/features/sell/use-shelf-price-refresh.ts'
+import {
+  readPersistedCheckoutState,
+  writePersistedCheckoutState,
+  type CheckoutPhase,
+} from '@/features/sell/sell-checkout-persist.ts'
+import { useStaffSession } from '@/app/use-staff-session.ts'
 import type { useSellCart } from '@/features/sell/use-sell-cart.ts'
 import type { Pesewas } from '@/lib/money.ts'
 
 type SellCart = ReturnType<typeof useSellCart>
 
-export type CheckoutPhase =
-  | 'editing'
-  | 'committing'
-  | 'success'
-  | 'voided'
-  | 'conflict'
-  | 'unconfirmed'
-  | 'network'
-  | 'price_confirm'
+export type { CheckoutPhase }
 
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
@@ -128,8 +126,16 @@ function CartLines({
   )
 }
 
+type PriceRefreshContext = {
+  cart: Cart
+  variantIds: readonly string[]
+  userMessage: string
+}
+
 export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const role = useStaffRole()
+  const { session } = useStaffSession()
+  const sessionKey = session?.userId ?? 'signed-out'
   const online = useOnline()
   const totalsId = useId()
   const [phase, setPhase] = useState<CheckoutPhase>('editing')
@@ -137,14 +143,12 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
   const [successTotal, setSuccessTotal] = useState<Pesewas | null>(null)
   const [ringNewOpen, setRingNewOpen] = useState(false)
   const [priceRefreshStatus, setPriceRefreshStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
-  const priceRefreshContextRef = useRef<{
-    cart: Cart
-    variantIds: readonly string[]
-    userMessage: string
-  } | null>(null)
+  const [priceRefreshContext, setPriceRefreshContext] = useState<PriceRefreshContext | null>(null)
+  const checkoutRestored = useRef(false)
   const checkoutInFlight = useRef(false)
   const { refreshCartShelfPrices } = useShelfPriceRefresh()
-  const { cart, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } = sellCart
+  const { cart, cartHydrated, addLine, changeQuantity, clearCart, mintNewSaleId, markCommitAttempt, replaceCart } =
+    sellCart
 
   const locked =
     phase === 'committing' ||
@@ -165,10 +169,14 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
       setPriceRefreshStatus('loading')
       setErrorMessage(`${userMessage} Updating shelf prices…`)
       try {
-        const refreshed = await refreshCartShelfPrices(cartSnapshot, variantIds)
+        const { cart: refreshed, missingVariantIds } = await refreshCartShelfPrices(cartSnapshot, variantIds)
         replaceCart(refreshed)
         setPriceRefreshStatus('ready')
-        setErrorMessage(`${userMessage} New total: ${formatGhs(cartGrossPesewas(refreshed))}.`)
+        const missingCopy =
+          missingVariantIds.length > 0
+            ? ` Could not load a shelf price for ${missingVariantIds.length} item(s) — check the catalogue.`
+            : ''
+        setErrorMessage(`${userMessage} New total: ${formatGhs(cartGrossPesewas(refreshed))}.${missingCopy}`)
       } catch {
         setPriceRefreshStatus('error')
         setErrorMessage(`${userMessage} Could not load the latest shelf prices.`)
@@ -176,6 +184,37 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
     },
     [refreshCartShelfPrices, replaceCart],
   )
+
+  useEffect(() => {
+    if (!session || !cartHydrated || checkoutRestored.current) return
+    const persisted = readPersistedCheckoutState(sessionKey, cart.id)
+    if (!persisted) return
+    checkoutRestored.current = true
+    setPhase('price_confirm')
+    setErrorMessage(persisted.errorMessage)
+    setPriceRefreshContext(persisted.priceRefreshContext)
+    setPriceRefreshStatus(persisted.priceRefreshStatus === 'idle' ? 'loading' : persisted.priceRefreshStatus)
+    markCommitAttempt()
+    if (persisted.priceRefreshStatus === 'loading' && persisted.priceRefreshContext) {
+      const ctx = persisted.priceRefreshContext
+      void runShelfPriceRefresh(ctx.cart, ctx.variantIds, ctx.userMessage)
+    }
+  }, [cart.id, cartHydrated, markCommitAttempt, runShelfPriceRefresh, session, sessionKey])
+
+  useEffect(() => {
+    if (!session || !cartHydrated) return
+    if (phase !== 'price_confirm') {
+      writePersistedCheckoutState(sessionKey, null)
+      return
+    }
+    writePersistedCheckoutState(sessionKey, {
+      cartId: cart.id,
+      phase,
+      errorMessage,
+      priceRefreshStatus,
+      priceRefreshContext,
+    })
+  }, [cart.id, cartHydrated, errorMessage, phase, priceRefreshContext, priceRefreshStatus, session, sessionKey])
 
   const handleCheckoutResult = useCallback(
     (result: CheckoutResult) => {
@@ -206,11 +245,11 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
         setPriceRefreshStatus('loading')
         setPhase('price_confirm')
         replaceCart(result.cart)
-        priceRefreshContextRef.current = {
+        setPriceRefreshContext({
           cart: result.cart,
           variantIds,
           userMessage: result.userMessage,
-        }
+        })
         void runShelfPriceRefresh(result.cart, variantIds, result.userMessage)
         return
       }
@@ -333,9 +372,12 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
                   type="button"
                   className="min-h-11"
                   onClick={() => {
-                    const ctx = priceRefreshContextRef.current
-                    if (!ctx) return
-                    void runShelfPriceRefresh(ctx.cart, ctx.variantIds, ctx.userMessage)
+                    if (!priceRefreshContext) return
+                    void runShelfPriceRefresh(
+                      priceRefreshContext.cart,
+                      priceRefreshContext.variantIds,
+                      priceRefreshContext.userMessage,
+                    )
                   }}
                 >
                   Retry price refresh
@@ -347,7 +389,7 @@ export function SellCheckoutPanel({ sellCart }: { sellCart: SellCart }) {
                   disabled={priceRefreshStatus !== 'ready'}
                   onClick={() => {
                     setPriceRefreshStatus('idle')
-                    priceRefreshContextRef.current = null
+                    setPriceRefreshContext(null)
                     setPhase('editing')
                   }}
                 >
